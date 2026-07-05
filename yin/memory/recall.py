@@ -6,9 +6,10 @@ widens a context's reach; a lane absent from the map is unreachable
 from that context, full stop.
 
   Context     Can read
-  chat        human (this user), lessons, goals, preferences, working
-  reflection  live conversation + the chat lanes
-  ambient     lessons, goals, preferences, autobiography
+  chat        human (this user), notebook (this user), lessons, goals,
+              preferences, working
+  reflection  live conversation + the chat lanes, vestibule
+  ambient     lessons, goals, preferences, autobiography, vestibule
   dream       working, autobiography
   scheduler   goals, lessons
 
@@ -23,14 +24,16 @@ from .autobiography import Autobiography
 from .goals import GoalManager
 from .human import HumanMemory
 from .lessons import LessonManager
+from .notebook import Notebook
 from .preferences import PreferenceManager
 from .timeline import Timeline
+from .vestibule import Vestibule
 from .working import WorkingMemory
 
 CONTEXT_LANES: Dict[str, List[str]] = {
-    "chat": ["human", "lessons", "goals", "preferences", "working"],
-    "reflection": ["human", "lessons", "goals", "preferences", "working"],
-    "ambient": ["lessons", "goals", "preferences", "autobiography"],
+    "chat": ["human", "notebook", "lessons", "goals", "preferences", "working"],
+    "reflection": ["human", "notebook", "lessons", "goals", "preferences", "working", "vestibule"],
+    "ambient": ["lessons", "goals", "preferences", "autobiography", "vestibule"],
     "dream": ["working", "autobiography"],
     "scheduler": ["goals", "lessons"],
 }
@@ -48,6 +51,8 @@ class YinMemory:
         self.autobiography = Autobiography()
         self.timeline = Timeline()
         self.working = WorkingMemory()
+        self.notebook = Notebook()
+        self.vestibule = Vestibule()
 
     def recall(self, context: str, query: str, user_id: str = "", k: int = 4) -> str:
         lanes = CONTEXT_LANES.get(context)
@@ -58,6 +63,8 @@ class YinMemory:
         sections: List[str] = []
         if "human" in lanes and user_id:
             sections.append(f"[HUMAN]\n{self.human.recall(user_id, query, k=k)}")
+        if "notebook" in lanes and user_id:
+            sections.append(f"[NOTEBOOK]\n{self.notebook.read(user_id, n=k)}")
         if "lessons" in lanes:
             sections.append(f"[LESSONS]\n{self.lessons.search(query, k=k)}")
         if "goals" in lanes:
@@ -68,4 +75,6 @@ class YinMemory:
             sections.append(f"[AUTOBIOGRAPHY]\n{self.autobiography.read_recent(3)}")
         if "working" in lanes:
             sections.append(f"[WORKING]\n{self.working.read(10)}")
+        if "vestibule" in lanes:
+            sections.append(f"[VESTIBULE]\n{self.vestibule.check()}")
         return "\n\n".join(sections)

@@ -97,6 +97,8 @@ These are new modules that do not exist in Ra:
 | memory/autobiography.py | Autobiography / journal — append-only narrative log |
 | memory/timeline.py | Timeline of significant events, ordered |
 | memory/working.py | Working memory — current session context, salience-scored |
+| memory/vestibule.py | Questions held open on purpose — hold anywhere, tend/check in reflection and ambient (ported from Ra, decided 2026-07-05) |
+| memory/notebook.py | Human-facing notes, reminders, calendar items — per-user, distinct from the scheduler (ported from Ra, decided 2026-07-05) |
 | kg_consolidator.py | Extracts facts into Neo4j every N conversation turns |
 | dream_cycle.py | 3am consolidation — salience scores working memory, condenses to autobiography, prunes orphan graph nodes |
 | scheduler.py | Yin-created recurring tasks via schedule_task tool |
@@ -118,6 +120,9 @@ yin/memory/
 ├── autobiography.json           # append-only narrative log
 ├── timeline.json                # significant events, ordered
 ├── working.json                 # current session, salience-scored
+├── vestibule.json               # questions held open, tended, resolved
+├── notebook/
+│   └── {discord_user_id}.json   # human-facing notes/reminders, keyed by user
 └── kg/
     └── (Neo4j connection config)
 ```
@@ -153,11 +158,20 @@ This gate lives inside `LessonManager.add_lesson()` and `PreferenceManager.add_p
 
 | **Context** | **Can read** | **Cannot read** |
 |:---|:---|:---|
-| Chat response | human lane (this user), lessons, goals, preferences, working | autobiography (private), other users' human lane |
-| Reflection | live conversation + above | recalled memory as evidence |
-| Ambient cycle | lessons, goals, preferences, autobiography, world_knowledge | human lane (no user present) |
-| Dream cycle | working, autobiography, world_knowledge | human lane |
-| Scheduler tasks | goals, lessons | human lane, autobiography |
+| Chat response | human lane (this user), notebook (this user), lessons, goals, preferences, working | autobiography (private), vestibule, other users' human lane |
+| Reflection | live conversation + above, vestibule | recalled memory as evidence |
+| Ambient cycle | lessons, goals, preferences, autobiography, vestibule, world_knowledge | human lane, notebook (no user present) |
+| Dream cycle | working, autobiography, world_knowledge | human lane, notebook |
+| Scheduler tasks | goals, lessons | human lane, autobiography, notebook |
+
+**Ported from Ra (decided 2026-07-05):** the human lane keeps Ra's admission
+categories (useful_continuity / explicit_tracking / sensitive_or_emotional /
+one_off_event) with consent status — sensitive material defaults to
+ask_before_use. The vestibule and notebook cross over as lanes above.
+**Deliberately not ported:** posture state and identity threads — frontier
+models already ship with an identity installed twice over (provider and
+harness prompts); layering a third creates friction. Yin explores identity
+without one being bookkept.
 
 ## Pipeline
 
@@ -349,6 +363,8 @@ Inherited from Ra, unchanged:
 | Autobiography   | JSON             | Append-only list of dated entries       |
 | Timeline        | JSON             | Ordered list of events                  |
 | Working memory  | JSON             | Session-scoped, salience-scored         |
+| Vestibule       | JSON             | Open questions with tending notes       |
+| Notebook        | JSON             | Per-user notes/reminders, due dates     |
 | World knowledge | Neo4j + ChromaDB | Graph + vector index                    |
 | Event log       | SQLite           | Replaces Ra's Postgres events table     |
 | Tool call log   | SQLite           | Replaces Ra's Postgres tool_calls table |

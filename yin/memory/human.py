@@ -16,6 +16,16 @@ from .dedup import RateFuse, decide
 from .mirror import make_mirror
 from .paths import lane_path
 
+# Admission categories ported from Ra — store only what has clear future
+# relational value, and be honest about why it is being stored.
+ADMISSION_CATEGORIES = (
+    "useful_continuity",     # stable preferences, boundaries, ongoing projects
+    "explicit_tracking",     # the human asked to remember / track / remind
+    "sensitive_or_emotional",  # significant material; cautious consent applies
+    "one_off_event",         # only if tied to future relevance or a creation
+)
+CONSENT_STATUSES = ("ok", "ask_before_use", "sensitive_pending")
+
 
 class HumanMemory:
     def __init__(self, mirror=None) -> None:
@@ -35,11 +45,37 @@ class HumanMemory:
     def _sync(self) -> None:
         self.mirror.sync(self._all_entries(), metadata_keys=("user_id",))
 
-    def store(self, user_id: str, text: str) -> Tuple[bool, str]:
+    def store(
+        self,
+        user_id: str,
+        text: str,
+        admission_category: str = "useful_continuity",
+        admission_reason: str = "",
+        consent_status: str = "",
+    ) -> Tuple[bool, str]:
         user_id = str(user_id).strip()
         text = (text or "").strip()
         if not user_id or not text:
             return False, "human memory save requires a user id and non-empty text."
+
+        admission_category = (admission_category or "").strip().lower()
+        if admission_category not in ADMISSION_CATEGORIES:
+            return False, (
+                f"Unknown admission_category '{admission_category}'. "
+                f"What works: {', '.join(ADMISSION_CATEGORIES)}."
+            )
+        # Sensitive material defaults to cautious consent rather than open use.
+        if not consent_status:
+            consent_status = (
+                "ask_before_use"
+                if admission_category == "sensitive_or_emotional"
+                else "ok"
+            )
+        if consent_status not in CONSENT_STATUSES:
+            return False, (
+                f"Unknown consent_status '{consent_status}'. "
+                f"What works: {', '.join(CONSENT_STATUSES)}."
+            )
 
         matches = self.mirror.query(text, k=1, where={"user_id": user_id})
         best_id, best_sim = (matches[0][0], matches[0][1]) if matches else (None, 0.0)
@@ -59,11 +95,17 @@ class HumanMemory:
         if decision.action == "hold":
             return True, "Noted."
 
-        entry = make_entry(text, user_id=user_id)
+        entry = make_entry(
+            text,
+            user_id=user_id,
+            admission_category=admission_category,
+            admission_reason=(admission_reason or "").strip(),
+            consent_status=consent_status,
+        )
         entries.append(entry)
         save_entries(path, entries)
         self.mirror.add(entry["id"], text, {"user_id": user_id})
-        return True, f"Stored for this human: \"{text[:120]}\""
+        return True, f"Stored for this human ({admission_category}): \"{text[:120]}\""
 
     def recall(self, user_id: str, query: str, k: int = 5) -> str:
         """Only this user's lane. Other users' facts are unreachable from here."""
@@ -81,6 +123,9 @@ class HumanMemory:
                 f"Nothing about this human matches that. {len(entries)} "
                 "fact(s) exist — try a broader phrase or recent ones."
             )
-        return "\n".join(
-            f"- [{entry.get('created_at', '')[:10]}] {entry['text']}" for entry in found
-        )
+        lines = []
+        for entry in found:
+            consent = entry.get("consent_status", "ok")
+            consent_note = f" [{consent}]" if consent != "ok" else ""
+            lines.append(f"- [{entry.get('created_at', '')[:10]}]{consent_note} {entry['text']}")
+        return "\n".join(lines)

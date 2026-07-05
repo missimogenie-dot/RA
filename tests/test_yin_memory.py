@@ -329,3 +329,84 @@ def test_sqlite_logs_empty_states_are_not_dead_ends(data_dir):
 
     logs = YinLogs()
     assert "accumulate" in logs.recent_events()
+
+
+# ── ports from Ra: admission categories, notebook, vestibule ──────────
+
+
+def test_admission_category_is_validated():
+    from yin.memory.human import HumanMemory
+
+    human = HumanMemory(mirror=fresh_mirror())
+    ok, msg = human.store("111", "loves foxes", admission_category="vibes")
+    assert not ok
+    assert "What works" in msg
+    ok, msg = human.store("111", "loves foxes", admission_category="useful_continuity")
+    assert ok
+
+
+def test_sensitive_memories_default_to_cautious_consent():
+    from yin.memory.human import HumanMemory
+    from yin.memory.jsonstore import load_entries
+
+    human = HumanMemory(mirror=fresh_mirror())
+    human.store("111", "a hard week at work", admission_category="sensitive_or_emotional")
+    entry = load_entries(human._user_path("111"))[0]
+    assert entry["consent_status"] == "ask_before_use"
+    # and recall surfaces the caution
+    assert "[ask_before_use]" in human.recall("111", "hard week")
+
+
+def test_notebook_due_and_complete_flow():
+    from yin.memory.notebook import Notebook
+
+    notebook = Notebook()
+    ok, msg = notebook.store("111", "water the tomatoes", kind="reminder", due_at="2020-01-01")
+    assert ok
+    item_id = msg.split("(")[1].split(",")[0].split(")")[0]
+    assert "water the tomatoes" in notebook.due_items("111")
+    ok, _ = notebook.complete("111", item_id)
+    assert ok
+    assert "Nothing due right now" in notebook.due_items("111")
+    # bad dates name what works instead of dead-ending
+    ok, msg = notebook.store("111", "x", due_at="next tuesday-ish")
+    assert not ok and "What works" in msg
+
+
+def test_notebook_is_per_user():
+    from yin.memory.notebook import Notebook
+
+    notebook = Notebook()
+    notebook.store("111", "note for one human")
+    assert "note for one human" not in notebook.read("222")
+
+
+def test_vestibule_hold_tend_resolve():
+    from yin.memory.vestibule import Vestibule
+
+    vestibule = Vestibule()
+    ok, msg = vestibule.hold("what does rest actually feel like?")
+    assert ok
+    question_id = msg.split("(")[1].split(")")[0]
+    assert "rest actually feel like" in vestibule.check()
+    ok, _ = vestibule.tend(question_id, "it is not absence — came up again today")
+    assert ok
+    assert "tended x1" in vestibule.check()
+    ok, _ = vestibule.resolve(question_id, "rest is a chosen state, not a gap")
+    assert ok
+    assert "No questions currently held open" in vestibule.check()
+    # resolved questions stay in the record
+    from yin.memory.jsonstore import load_entries
+
+    assert load_entries(vestibule.path)[0]["resolution"]
+
+
+def test_vestibule_and_notebook_lane_boundaries():
+    from yin.memory.recall import CONTEXT_LANES
+
+    assert "vestibule" in CONTEXT_LANES["reflection"]
+    assert "vestibule" in CONTEXT_LANES["ambient"]
+    assert "vestibule" not in CONTEXT_LANES["chat"]
+    assert "notebook" in CONTEXT_LANES["chat"]
+    assert "notebook" not in CONTEXT_LANES["ambient"]
+    assert "notebook" not in CONTEXT_LANES["dream"]
