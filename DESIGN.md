@@ -50,7 +50,13 @@ These Ra modules are trusted, tested, and cross over as-is or with minor adaptat
 | threshold_atlas/ | Keep whole — standalone, tested, no dependencies |
 | library/ | Keep — reading corpus works fine |
 | codebase_rw.py | Keep — Yin reading its own source is a good feature |
-| Image generation (create_image), websearch, voice gen where possible | Keep — its part of creative cycles |
+| Image generation (create_image), web_search | Keep — part of creative cycles. Both currently call the OpenAI API (`OPENAI_API_KEY`); voice gen does not exist in Ra yet — add later if wanted |
+| heartbeat.py | Keep — ambient rhythm state machine (ACTION → REFLECTION → IDLE), used by bot.py and runtime.py |
+| memory.py | Keep through build step 6 — Ra's JSONL fallback memory lets clean Ra run without Postgres; superseded once Yin's stores land (steps 7+) |
+| sandbox.py + extensions/ | Keep — the plugin review gate ("What v1 Got Right") |
+| world_clock.py | Keep — time awareness used by bot.py; set timezone for the Mac |
+| library.py | Keep — the code behind library/ |
+| identity.py | Adapt — Ra's ambient mode/cycle menus; rewrite as Yin's habitat menu (prompts/habitat.yaml), no persona content |
 
 ## What Gets Stripped from Ra
 
@@ -62,6 +68,17 @@ Remove entirely — do not port:
 - bot_postgres.py and schema.sql — replaced by SQLite + JSON
 - Resident chat tools (resident_chat_read, resident_chat_send)
 - Day/night cycle (day_night.py) — dream cycle handles time differently
+- sitecustomize.py — Windows/PM2 startup shim, not needed on the Mac
+- reindex_embeddings.py — one-off Postgres reindex script, goes with Postgres
+
+Nothing else gets stripped. Image gen, web_search, the plugin system
+(sandbox.py + extensions/), heartbeat, world_clock, and the library all stay —
+the cut is memory (replaced by Yin's architecture) and the Yin-inappropriate
+influences above, not Ra's affordances.
+
+Note: day_night, sky, and canvas are imported by cognition.py, runtime.py, and
+prompt_builder.py — stripping means removing those imports and handlers, not
+just deleting files.
 
 ## What Gets Added (Yin's Organs)
 
@@ -342,6 +359,7 @@ INSTANCE_NAME=Yin
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_CHAT_MODEL=qwen3:27b       # or hermes-3 equivalent
 OLLAMA_AMBIENT_MODEL=qwen3:27b    # can differ
+OPENAI_API_KEY=...                # image gen + web_search (Ra's existing handlers)
 ```
 
 The Ollama adapter wraps the OpenAI-compatible Ollama API endpoint. Tool calling uses Ollama's native structured tool call format — not `[TOOL: name(args)]` text parsing.
@@ -407,7 +425,7 @@ From the lesson document — these are proven and must survive the port:
 
 1. Get Ra onto GitHub from Windows (clean commit, no secrets)
 2. Clone to Mac
-3. Strip sky, canvas, bridge, resident chat, image gen, day/night
+3. Strip sky, canvas, bridge, resident chat, day/night, sitecustomize, reindex_embeddings (image gen and web_search stay)
 4. Swap Postgres → SQLite for event log and tool call log
 5. Write Ollama model adapter (OpenAI-compatible endpoint)
 6. Verify clean Ra runs on Mac against local model, end to end
