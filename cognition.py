@@ -24,7 +24,7 @@ from config import (
 from codebase_rw import CodebaseRW
 from day_night import DayNightCycle
 from identity import AMBIENT_MODES, CYCLE_CHOICES
-from bot_postgres import BotPostgres
+from yin.bridge import YinStore
 from library import Library
 from memory import BotMemory
 from model_adapters import ModelAdapter
@@ -564,7 +564,7 @@ class CognitionEngine:
         model_adapter: ModelAdapter,
         ambient_model_adapter: ModelAdapter,
         memory: BotMemory,
-        postgres: BotPostgres,
+        store: YinStore,
         library: Library,
         codebase: CodebaseRW,
         day_night: Optional[DayNightCycle] = None,
@@ -577,7 +577,7 @@ class CognitionEngine:
         self.model_adapter = model_adapter
         self.ambient_model_adapter = ambient_model_adapter
         self.memory = memory
-        self.postgres = postgres
+        self.store = store
         self.library = library
         self.codebase = codebase
         self.day_night = day_night
@@ -607,7 +607,7 @@ class CognitionEngine:
     ) -> CognitionResult:
         scoped_human_id = human_id or author
         message_context = message_context or {}
-        human_event_id = await self.postgres.log_event(
+        human_event_id = await self.store.log_event(
             "human_turn",
             user_text,
             source_actor=author,
@@ -645,7 +645,7 @@ class CognitionEngine:
         )
         self.memory.append_conversation(author, user_text, result.text)
         if result.text:
-            await self.postgres.log_event(
+            await self.store.log_event(
                 "bot_turn",
                 result.text,
                 source_actor=self.instance_name,
@@ -714,7 +714,7 @@ class CognitionEngine:
         human_id: str,
         channel_name: str,
     ) -> str:
-        trace_id = await self.postgres.log_interaction_trace(
+        trace_id = await self.store.log_interaction_trace(
             event_id=event_id,
             bot_id=self.instance_name,
             human_id=human_id,
@@ -729,7 +729,7 @@ class CognitionEngine:
         if trace_id.startswith("error:") or trace_id == "[no-postgres]":
             return trace_id
         for influence in routing.influences:
-            await self.postgres.log_influence_event(
+            await self.store.log_influence_event(
                 trace_id=trace_id,
                 bot_id=self.instance_name,
                 human_id=human_id,
@@ -742,7 +742,7 @@ class CognitionEngine:
                 notes=influence.notes,
             )
         for invitation in routing.role_invitations:
-            await self.postgres.log_role_invitation(
+            await self.store.log_role_invitation(
                 trace_id=trace_id,
                 bot_id=self.instance_name,
                 human_id=human_id,
@@ -779,10 +779,10 @@ class CognitionEngine:
     # ── phase 3: ambient / dream ──────────────────────────────────────
 
     async def ambient_cycle(self, cycle: int = 0) -> CognitionResult:
-        posture = await self.postgres.read_posture()
+        posture = await self.store.read_posture()
         idle_count = int(posture.get("idle_cycle_count", 0) or 0) + 1
-        await self.postgres.update_posture("idle_cycle_count", idle_count)
-        await self.postgres.update_posture("current_posture", "open")
+        await self.store.update_posture("idle_cycle_count", idle_count)
+        await self.store.update_posture("current_posture", "open")
 
         # Day/night state
         is_night = self.day_night.is_night if self.day_night else False
@@ -865,9 +865,9 @@ class CognitionEngine:
             phase="ambient", model=self.ambient_model, tools=AMBIENT_TOOLS,
         )
 
-        posture = await self.postgres.read_posture()
+        posture = await self.store.read_posture()
         wants_active = str(posture.get("night_choice", "rest")) == "awake"
-        await self.postgres.update_posture("night_choice", "rest")
+        await self.store.update_posture("night_choice", "rest")
 
         if result.text:
             self.memory.append_ambient(f"night_check_{phase}", result.text)
@@ -879,7 +879,7 @@ class CognitionEngine:
     async def _get_poem_fragment(self) -> str:
         """Extract 1-2 lines from an older creation for night surfacing."""
         try:
-            raw = await self.postgres.recent_creations(limit=20)
+            raw = await self.store.recent_creations(limit=20)
             creations = json.loads(raw)
             if not creations:
                 return ""
@@ -901,12 +901,12 @@ class CognitionEngine:
     # ── system prompt ─────────────────────────────────────────────────
 
     async def _build_system_prompt(self, mode: str, human_id: str = "") -> List[Dict[str, Any]]:
-        posture = await self.postgres.read_posture()
-        identity_threads = await self.postgres.identity_threads(limit=8)
-        recent_creations = await self.postgres.recent_creations(limit=3)
-        recent_tool_calls = await self.postgres.recent_tool_calls(bot_id=self.instance_name, limit=8)
-        habitat = await self.postgres.habitat_snapshot(bot_id=self.instance_name, event_limit=6)
-        bot_self_memory = await self.postgres.recent_layered_memory(
+        posture = await self.store.read_posture()
+        identity_threads = await self.store.identity_threads(limit=8)
+        recent_creations = await self.store.recent_creations(limit=3)
+        recent_tool_calls = await self.store.recent_tool_calls(bot_id=self.instance_name, limit=8)
+        habitat = await self.store.habitat_snapshot(bot_id=self.instance_name, event_limit=6)
+        bot_self_memory = await self.store.recent_layered_memory(
             layer="bot_self_memory",
             bot_id=self.instance_name,
             limit=6,
@@ -914,13 +914,13 @@ class CognitionEngine:
         human_memory = "[]"
         human_notebook = "[]"
         if human_id:
-            human_memory = await self.postgres.recent_layered_memory(
+            human_memory = await self.store.recent_layered_memory(
                 layer="human_memory",
                 bot_id=self.instance_name,
                 human_id=human_id,
                 limit=6,
             )
-            human_notebook = await self.postgres.recent_layered_memory(
+            human_notebook = await self.store.recent_layered_memory(
                 layer="human_notebook",
                 bot_id=self.instance_name,
                 human_id=human_id,
@@ -929,7 +929,7 @@ class CognitionEngine:
 
         self_inf_text = ""
         try:
-            self_inf_raw = await self.postgres.recent_interpretations(limit=5, type_filter="self_inference")
+            self_inf_raw = await self.store.recent_interpretations(limit=5, type_filter="self_inference")
             inferences = json.loads(self_inf_raw)
             if inferences:
                 self_inf_text = "\n".join(
@@ -939,7 +939,7 @@ class CognitionEngine:
         except Exception:
             pass
 
-        recent_convs = await self.postgres.recent_conversations(limit=8)
+        recent_convs = await self.store.recent_conversations(limit=8)
         if mode == "ambient":
             recent_convs = recent_convs[-2:]
 
@@ -1009,7 +1009,7 @@ class CognitionEngine:
                     "result": output[:2000], "phase": phase, "round": round_no,
                 }
                 tool_log.append(entry)
-                tool_call_id = await self.postgres.log_tool_call(
+                tool_call_id = await self.store.log_tool_call(
                     event_id="", tool_name=call.name, phase=phase,
                     args=args, result_preview=output[:500],
                     success=_tool_succeeded(output),
@@ -1065,7 +1065,7 @@ class CognitionEngine:
             return
         residue = self._classify_immediate_habitat_residue(tool_name, args, output, phase, tool_call_id)
         if not residue.get("has_residue"):
-            await self.postgres.log_habitat_residue_decision(
+            await self.store.log_habitat_residue_decision(
                 bot_id=self.instance_name,
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
@@ -1075,7 +1075,7 @@ class CognitionEngine:
                 metadata={"tool_args": args},
             )
             return
-        entry_id = await self.postgres.place_habitat_entry(
+        entry_id = await self.store.place_habitat_entry(
             bot_id=self.instance_name,
             area=str(residue["area"]),
             entry_type=str(residue["entry_type"]),
@@ -1093,7 +1093,7 @@ class CognitionEngine:
                 "tool_args": args,
             },
         )
-        await self.postgres.log_habitat_residue_decision(
+        await self.store.log_habitat_residue_decision(
             bot_id=self.instance_name,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
@@ -1193,7 +1193,7 @@ class CognitionEngine:
 
         trace = result.get("trace")
         if isinstance(trace, dict):
-            await self.postgres.place_habitat_entry(
+            await self.store.place_habitat_entry(
                 bot_id=self.instance_name,
                 area=str(trace.get("area", "game")),
                 entry_type=str(trace.get("entry_type", "object")),
@@ -1236,7 +1236,7 @@ class CognitionEngine:
         try:
             # memory
             if name == "memory_interpret":
-                id = await self.postgres.store_interpretation(
+                id = await self.store.store_interpretation(
                     type=str(args.get("type", "observation")),
                     content=str(args.get("content", "")),
                     confidence=float(args.get("confidence", 0.5)),
@@ -1247,14 +1247,14 @@ class CognitionEngine:
                 return _stored_result("Interpretation", id), files
 
             if name == "memory_update_status":
-                return await self.postgres.update_interpretation_status(
+                return await self.store.update_interpretation_status(
                     str(args.get("id", "")),
                     str(args.get("new_status", "")),
                     str(args.get("note", "")),
                 ), files
 
             if name == "memory_link":
-                return await self.postgres.link_interpretations(
+                return await self.store.link_interpretations(
                     str(args.get("from_id", "")),
                     str(args.get("to_id", "")),
                     str(args.get("link_type", "")),
@@ -1262,7 +1262,7 @@ class CognitionEngine:
                 ), files
 
             if name == "memory_search":
-                return await self.postgres.search_interpretations(
+                return await self.store.search_interpretations(
                     str(args.get("query", "")),
                     limit=int(args.get("limit", 10)),
                     status_filter=args.get("status_filter"),
@@ -1270,7 +1270,7 @@ class CognitionEngine:
                 ), files
 
             if name == "memory_recent":
-                return await self.postgres.recent_interpretations(
+                return await self.store.recent_interpretations(
                     limit=int(args.get("limit", 10)),
                     type_filter=args.get("type"),
                     status_filter=args.get("status"),
@@ -1278,7 +1278,7 @@ class CognitionEngine:
                 ), files
 
             if name == "human_memory_store":
-                id = await self.postgres.store_human_memory(
+                id = await self.store.store_human_memory(
                     bot_id=self.instance_name,
                     human_id=str(args.get("human_id", "")),
                     memory_type=str(args.get("memory_type", "other")),
@@ -1292,7 +1292,7 @@ class CognitionEngine:
                 return _stored_result("Human memory", id), files
 
             if name == "human_notebook_store":
-                id = await self.postgres.store_human_notebook(
+                id = await self.store.store_human_notebook(
                     bot_id=self.instance_name,
                     human_id=str(args.get("human_id", "")),
                     entry_type=str(args.get("entry_type", "note")),
@@ -1313,7 +1313,7 @@ class CognitionEngine:
                         "error: bot self-memory candidates cannot be stored during direct human response/reflection; "
                         "use ambient/tending review after recurrence, not immediate human-prompted identity logging."
                     ), files
-                id = await self.postgres.store_bot_self_memory_candidate(
+                id = await self.store.store_bot_self_memory_candidate(
                     bot_id=self.instance_name,
                     memory_type=str(args.get("memory_type", "open_question")),
                     content=str(args.get("content", "")),
@@ -1326,7 +1326,7 @@ class CognitionEngine:
                 return _stored_result("Bot self-memory candidate", id), files
 
             if name == "layered_memory_recent":
-                return await self.postgres.recent_layered_memory(
+                return await self.store.recent_layered_memory(
                     layer=str(args.get("layer", "")),
                     bot_id=self.instance_name,
                     human_id=str(args.get("human_id", "")),
@@ -1337,7 +1337,7 @@ class CognitionEngine:
             if name == "creation_store":
                 mode = str(args.get("mode", "creation"))
                 content = str(args.get("content", ""))
-                id = await self.postgres.store_creation(
+                id = await self.store.store_creation(
                     mode=mode, content=content,
                     prompted_by=args.get("prompted_by_id"),
                     tags=list(args.get("tags") or []),
@@ -1348,14 +1348,14 @@ class CognitionEngine:
                 return _stored_result("Creation", id), files
 
             if name == "creation_recent":
-                return await self.postgres.recent_creations(
+                return await self.store.recent_creations(
                     limit=int(args.get("limit", 5)),
                     mode_filter=args.get("mode_filter"),
                 ), files
 
             # habitat
             if name == "habitat_snapshot":
-                return await self.postgres.habitat_snapshot(
+                return await self.store.habitat_snapshot(
                     bot_id=self.instance_name,
                     area=str(args.get("area", "")),
                     event_limit=int(args.get("event_limit", 8)),
@@ -1387,7 +1387,7 @@ class CognitionEngine:
             if name == "habitat_event":
                 if phase != "ambient":
                     return "error: habitat mutation is ambient/tending only; human chat can influence habitat but cannot directly command it.", files
-                id = await self.postgres.log_habitat_event(
+                id = await self.store.log_habitat_event(
                     bot_id=self.instance_name,
                     area=str(args.get("area", "")),
                     action=str(args.get("action", "")),
@@ -1399,7 +1399,7 @@ class CognitionEngine:
             if name == "habitat_place":
                 if phase != "ambient":
                     return "error: habitat placement is ambient/tending only; human chat can influence habitat but cannot directly command it.", files
-                id = await self.postgres.place_habitat_entry(
+                id = await self.store.place_habitat_entry(
                     bot_id=self.instance_name,
                     area=str(args.get("area", "")),
                     entry_type=str(args.get("entry_type", "")),
@@ -1417,7 +1417,7 @@ class CognitionEngine:
             if name == "habitat_update":
                 if phase != "ambient":
                     return "error: habitat mutation is ambient/tending only; human chat can influence habitat but cannot directly command it.", files
-                id = await self.postgres.update_habitat_state(
+                id = await self.store.update_habitat_state(
                     bot_id=self.instance_name,
                     area=str(args.get("area", "")),
                     state_patch=args.get("state_patch") if isinstance(args.get("state_patch"), dict) else {},
@@ -1427,27 +1427,27 @@ class CognitionEngine:
 
             # posture
             if name == "posture_read":
-                return json.dumps(await self.postgres.read_posture(), ensure_ascii=False), files
+                return json.dumps(await self.store.read_posture(), ensure_ascii=False), files
 
             if name == "posture_update":
-                return await self.postgres.update_posture(
+                return await self.store.update_posture(
                     str(args.get("key", "")), args.get("value"),
                 ), files
 
             # vestibule
             if name == "vestibule_hold":
-                return await self.postgres.hold_interpretation(
+                return await self.store.hold_interpretation(
                     str(args.get("interpretation_id", "")),
                     str(args.get("held_reason", "")),
                     args.get("revisit_after"),
                 ), files
 
             if name == "vestibule_check":
-                return await self.postgres.check_vestibule(limit=int(args.get("limit", 5))), files
+                return await self.store.check_vestibule(limit=int(args.get("limit", 5))), files
 
             # deferred
             if name == "defer_response":
-                id = await self.postgres.defer_response(
+                id = await self.store.defer_response(
                     incoming_text=str(args.get("incoming_text", "")),
                     author=str(args.get("author", "")),
                     channel=str(args.get("channel", "")),
@@ -1456,18 +1456,18 @@ class CognitionEngine:
                 return _stored_result("Deferred response", id), files
 
             if name == "deferred_check":
-                pending = await self.postgres.pending_deferred(limit=int(args.get("limit", 5)))
+                pending = await self.store.pending_deferred(limit=int(args.get("limit", 5)))
                 return json.dumps(pending, ensure_ascii=False, default=str), files
 
             if name == "memory_review_candidates":
-                return await self.postgres.review_candidates(
+                return await self.store.review_candidates(
                     bot_id=self.instance_name,
                     limit=int(args.get("limit", 8)),
                     include_identity=bool(args.get("include_identity", True)),
                 ), files
 
             if name == "memory_review_decide":
-                id = await self.postgres.decide_memory_review(
+                id = await self.store.decide_memory_review(
                     bot_id=self.instance_name,
                     candidate_id=str(args.get("candidate_id", "")),
                     decision=str(args.get("decision", "")),
@@ -1478,13 +1478,13 @@ class CognitionEngine:
                 return _stored_result("Memory review", id), files
 
             if name == "memory_context_list":
-                return await self.postgres.list_memory_contexts(
+                return await self.store.list_memory_contexts(
                     bot_id=self.instance_name,
                     include_archived=bool(args.get("include_archived", False)),
                 ), files
 
             if name == "memory_context_create":
-                id = await self.postgres.ensure_memory_context(
+                id = await self.store.ensure_memory_context(
                     bot_id=self.instance_name,
                     key=str(args.get("key", "general")),
                     title=str(args.get("title", "General")),
@@ -1495,7 +1495,7 @@ class CognitionEngine:
 
             # event log
             if name == "event_log":
-                id = await self.postgres.log_event(
+                id = await self.store.log_event(
                     source_type=str(args.get("source_type", "system")),
                     content=str(args.get("content", "")),
                     metadata=args.get("metadata"),

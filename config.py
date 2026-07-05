@@ -92,11 +92,6 @@ RECENT_CONTEXT_LIMIT: int = int(os.getenv("RECENT_CONTEXT_LIMIT", "12"))
 MAX_TOOL_ROUNDS: int = int(os.getenv("MAX_TOOL_ROUNDS", "10"))
 MAX_TOOL_CALLS: int = int(os.getenv("MAX_TOOL_CALLS", "12"))
 
-# Postgres
-POSTGRES_DSN: str = os.getenv("POSTGRES_DSN", "")
-POSTGRES_DATABASE: str = os.getenv("POSTGRES_DATABASE", "ra_core")
-BOT_POSTGRES_SCHEMA: str = os.getenv("BOT_POSTGRES_SCHEMA", os.getenv("ISUUI_POSTGRES_SCHEMA", "public"))
-
 # Paths
 RUNTIME_STATE_DIR: Path = Path(os.getenv("RUNTIME_STATE_DIR", str(PROJECT_ROOT / "runtime_state")))
 ARTIFACTS_DIR: Path = Path(os.getenv("ARTIFACTS_DIR", str(RUNTIME_STATE_DIR / "artifacts")))
@@ -126,7 +121,6 @@ CORE_FILES: frozenset[str] = frozenset({
     "cognition.py",
     "bot.py",
     "memory.py",
-    "bot_postgres.py",
     "model_adapters.py",
     "runtime.py",
     "world_clock.py",
@@ -138,6 +132,5 @@ CORE_FILES: frozenset[str] = frozenset({
     "codebase_rw.py",
     "sandbox.py",
     "requirements.txt",
-    "schema.sql",
     "day_night.py",
 })

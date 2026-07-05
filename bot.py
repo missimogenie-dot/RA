@@ -161,7 +161,7 @@ class BotClient(discord.Client):
         if self._ambient_enabled and not self._heartbeat_task:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             log.info("Heartbeat loop started.")
-        await self.cognition.postgres.update_posture(
+        await self.cognition.store.update_posture(
             "boot_completed_at", __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
         )
 
@@ -468,7 +468,7 @@ class BotClient(discord.Client):
             return False
         if self._process_lock.locked():
             return False
-        raw = await self.cognition.postgres.due_notebook_items(
+        raw = await self.cognition.store.due_notebook_items(
             bot_id=self.cognition.instance_name,
             limit=5,
         )
@@ -488,7 +488,7 @@ class BotClient(discord.Client):
         entry_type = str(item.get("entry_type") or "note")
         if entry_type not in {"reminder", "task", "calendar", "date", "event"}:
             return False
-        recent_raw = await self.cognition.postgres.recent_initiation_attempts(
+        recent_raw = await self.cognition.store.recent_initiation_attempts(
             bot_id=self.cognition.instance_name,
             human_id=human_id,
             limit=5,
@@ -498,7 +498,7 @@ class BotClient(discord.Client):
         except json.JSONDecodeError:
             recent = []
         if self._recent_initiation_within_cooldown(recent):
-            await self.cognition.postgres.log_initiation_attempt(
+            await self.cognition.store.log_initiation_attempt(
                 bot_id=self.cognition.instance_name,
                 human_id=human_id,
                 target_table="human_notebook",
@@ -515,7 +515,7 @@ class BotClient(discord.Client):
             user = await self.fetch_user(int(human_id))
             await user.send(message)
         except Exception as exc:
-            await self.cognition.postgres.log_initiation_attempt(
+            await self.cognition.store.log_initiation_attempt(
                 bot_id=self.cognition.instance_name,
                 human_id=human_id,
                 target_table="human_notebook",
@@ -530,7 +530,7 @@ class BotClient(discord.Client):
             )
             await self.send_named("logs", f"Notebook DM reminder failed for `{human_id}`: `{exc}`")
             return False
-        await self.cognition.postgres.log_initiation_attempt(
+        await self.cognition.store.log_initiation_attempt(
             bot_id=self.cognition.instance_name,
             human_id=human_id,
             target_table="human_notebook",
@@ -543,7 +543,7 @@ class BotClient(discord.Client):
             metadata={"entry_type": entry_type},
         )
         if not str(item.get("recurrence") or "").strip():
-            await self.cognition.postgres.complete_notebook_item(
+            await self.cognition.store.complete_notebook_item(
                 bot_id=self.cognition.instance_name,
                 notebook_id=notebook_id,
                 reason="dm_reminder_sent",
@@ -650,7 +650,7 @@ class BotClient(discord.Client):
                 await message.channel.send(result.text.strip() or "(no result)")
             return
         if cmd_lower == "!defer":
-            pending = await self.cognition.postgres.pending_deferred(limit=5)
+            pending = await self.cognition.store.pending_deferred(limit=5)
             if not pending:
                 await message.channel.send("No deferred responses pending.")
                 return
@@ -663,7 +663,7 @@ class BotClient(discord.Client):
                         channel_name=item["channel"],
                     )
                     await self.send_named("chat", result.text[:1800])
-                    await self.cognition.postgres.mark_answered(str(item["id"]), result.text)
+                    await self.cognition.store.mark_answered(str(item["id"]), result.text)
                 except Exception as exc:
                     log.error("Deferred response failed: %s", exc)
             return
@@ -802,7 +802,7 @@ class BotClient(discord.Client):
             f"DM chat: `{'on' if DM_CHAT_ENABLED else 'off'}`",
             f"Ambient: `{'on' if self._ambient_enabled else 'off'}`",
             f"Day/night: `{'on' if DAY_NIGHT_ENABLED else 'off'}`",
-            f"Postgres: `{'connected' if self.cognition.postgres.available else 'unavailable (JSONL fallback)'}`",
+            f"Postgres: `{'connected' if self.cognition.store.available else 'unavailable (JSONL fallback)'}`",
             f"Last activity: `{self._last_activity}`",
             f"Human turns: `{self._human_turn_count}`",
             self.world_clock.render(),
@@ -822,7 +822,7 @@ class BotClient(discord.Client):
         limit = 1 if subcommand in {"last", "full"} else 3
         if subcommand.isdigit():
             limit = max(1, min(int(subcommand), 5))
-        raw = await self.cognition.postgres.recent_interaction_traces(limit=limit)
+        raw = await self.cognition.store.recent_interaction_traces(limit=limit)
         try:
             traces = json.loads(raw)
         except json.JSONDecodeError:
@@ -836,7 +836,7 @@ class BotClient(discord.Client):
         return "\n".join(lines)[:1900]
 
     async def _trace_compare_report(self, days: int = 7) -> str:
-        raw = await self.cognition.postgres.trace_compare(days=days)
+        raw = await self.cognition.store.trace_compare(days=days)
         try:
             rows = json.loads(raw)
         except json.JSONDecodeError:
@@ -864,7 +864,7 @@ class BotClient(discord.Client):
         numeric_parts = [part for part in parts[1:] if part.isdigit()]
         limit = _safe_int(numeric_parts[0], 8) if numeric_parts else 8
         if subcommand in {"audit", "decisions", "residue"}:
-            raw = await self.cognition.postgres.recent_habitat_residue_decisions(
+            raw = await self.cognition.store.recent_habitat_residue_decisions(
                 bot_id=self.cognition.instance_name,
                 limit=limit,
             )
@@ -890,7 +890,7 @@ class BotClient(discord.Client):
             return "\n".join(lines)[:1900]
         if subcommand in {"recent-events", "events"}:
             area = ""
-        raw = await self.cognition.postgres.habitat_snapshot(
+        raw = await self.cognition.store.habitat_snapshot(
             bot_id=self.cognition.instance_name,
             area=area,
             event_limit=limit,
@@ -955,7 +955,7 @@ class BotClient(discord.Client):
         limit = _safe_int(numeric_parts[0], 8) if numeric_parts else 8
         if subcommand != "due":
             return "Notebook commands: `!notebook due [n]`"
-        raw = await self.cognition.postgres.due_notebook_items(
+        raw = await self.cognition.store.due_notebook_items(
             bot_id=self.cognition.instance_name,
             limit=limit,
         )
@@ -984,7 +984,7 @@ class BotClient(discord.Client):
         limit = _safe_int(numeric_parts[0], 8) if numeric_parts else 8
         if subcommand not in {"audit", "recent"}:
             return "Initiation commands: `!initiation audit [n]`"
-        raw = await self.cognition.postgres.recent_initiation_attempts(
+        raw = await self.cognition.store.recent_initiation_attempts(
             bot_id=self.cognition.instance_name,
             human_id=author if is_dm else "",
             limit=limit,
@@ -1037,11 +1037,11 @@ class BotClient(discord.Client):
             return await self._memory_curator_action(parts, parts_lower, author, channel_id)
 
         if layer == "identity":
-            raw = await self.cognition.postgres.identity_threads(limit=limit)
+            raw = await self.cognition.store.identity_threads(limit=limit)
             title = "Protected identity threads"
             formatter = self._format_identity_rows
         elif layer == "reviews":
-            raw = await self.cognition.postgres.review_candidates(
+            raw = await self.cognition.store.review_candidates(
                 bot_id=self.cognition.instance_name,
                 limit=limit,
                 include_identity=True,
@@ -1049,14 +1049,14 @@ class BotClient(discord.Client):
             title = "Memory review candidates"
             formatter = self._format_memory_rows
         elif layer == "contexts":
-            raw = await self.cognition.postgres.list_memory_contexts(
+            raw = await self.cognition.store.list_memory_contexts(
                 bot_id=self.cognition.instance_name,
                 include_archived=True,
             )
             title = "Memory contexts"
             formatter = self._format_context_rows
         elif layer in {"admissions", "audit"}:
-            raw = await self.cognition.postgres.recent_memory_admissions(
+            raw = await self.cognition.store.recent_memory_admissions(
                 bot_id=self.cognition.instance_name,
                 human_id=author,
                 limit=limit,
@@ -1064,7 +1064,7 @@ class BotClient(discord.Client):
             title = "Memory admissions"
             formatter = self._format_admission_rows
         elif layer == "curator":
-            raw = await self.cognition.postgres.recent_curator_actions(
+            raw = await self.cognition.store.recent_curator_actions(
                 bot_id=self.cognition.instance_name,
                 limit=limit,
             )
@@ -1079,7 +1079,7 @@ class BotClient(discord.Client):
             db_layer = layer_map.get(layer)
             if not db_layer:
                 return "Unknown memory layer. Try `!memory help`."
-            raw = await self.cognition.postgres.recent_layered_memory(
+            raw = await self.cognition.store.recent_layered_memory(
                 layer=db_layer,
                 bot_id=self.cognition.instance_name,
                 human_id=author if db_layer != "bot_self_memory" else "",
@@ -1129,10 +1129,10 @@ class BotClient(discord.Client):
             decision = decision_map.get(action, "")
             if not decision:
                 return "Self-memory curator actions support `archive` or `reject`."
-            resolved = await self.cognition.postgres.resolve_memory_id("bot_self_memory", bot_id, target_id)
+            resolved = await self.cognition.store.resolve_memory_id("bot_self_memory", bot_id, target_id)
             if resolved.startswith("error:"):
                 return resolved
-            review_id = await self.cognition.postgres.decide_memory_review(
+            review_id = await self.cognition.store.decide_memory_review(
                 bot_id=bot_id,
                 candidate_id=resolved,
                 decision=decision,
@@ -1141,7 +1141,7 @@ class BotClient(discord.Client):
             )
             if review_id.startswith("error:") or review_id.startswith("[no-postgres]"):
                 return review_id
-            await self.cognition.postgres.record_curator_action(
+            await self.cognition.store.record_curator_action(
                 bot_id=bot_id,
                 target_table="bot_self_memory",
                 target_id=resolved,
@@ -1171,7 +1171,7 @@ class BotClient(discord.Client):
         if table == "human_memory" and status == "completed":
             return "`complete` only applies to notebook rows."
 
-        result = await self.cognition.postgres.update_curated_memory_status(
+        result = await self.cognition.store.update_curated_memory_status(
             bot_id=bot_id,
             target_table=table,
             target_id=target_id,
@@ -1288,7 +1288,7 @@ class BotClient(discord.Client):
         return lines
 
     async def _trace_stats_report(self, days: int = 7) -> str:
-        raw = await self.cognition.postgres.trace_aggregate(days=days)
+        raw = await self.cognition.store.trace_aggregate(days=days)
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:

@@ -14,7 +14,6 @@ from config import (
     AMBIENT_MODEL_BASE_URL,
     AMBIENT_MODEL_NAME,
     AMBIENT_MODEL_PROVIDER,
-    BOT_POSTGRES_SCHEMA,
     DAY_NIGHT_ENABLED,
     DAY_END_HOUR,
     DAY_START_HOUR,
@@ -24,17 +23,14 @@ from config import (
     MODEL_BASE_URL,
     MODEL_NAME,
     MODEL_PROVIDER,
-    OPENAI_API_KEY,
-    POSTGRES_DATABASE,
-    POSTGRES_DSN,
     RUNTIME_STATE_DIR,
 )
 from day_night import DayNightCycle
 from heartbeat import Heartbeat
-from bot_postgres import BotPostgres
 from library import Library
 from memory import BotMemory
 from model_adapters import create_model_adapter, provider_api_key
+from yin.bridge import YinStore
 
 log = logging.getLogger("ra.runtime")
 
@@ -67,18 +63,8 @@ async def main() -> None:
     library = Library(library_dir=LIBRARY_DIR)
     codebase = CodebaseRW()
 
-    postgres = BotPostgres(
-        dsn=POSTGRES_DSN,
-        openai_api_key=OPENAI_API_KEY,
-        schema=BOT_POSTGRES_SCHEMA,
-        expected_database=POSTGRES_DATABASE,
-    )
-    if POSTGRES_DSN:
-        connected = await postgres.connect()
-        if not connected:
-            log.warning("Postgres unavailable — continuing with JSONL fallback.")
-    else:
-        log.info("POSTGRES_DSN not set — running in JSONL-only mode.")
+    store = YinStore(memory=memory)
+    log.info("YinStore ready — SQLite logs + JSON lanes, all local.")
 
     day_night = DayNightCycle(day_start=DAY_START_HOUR, day_end=DAY_END_HOUR) if DAY_NIGHT_ENABLED else None
     phase = day_night.phase if day_night else "continuous"
@@ -90,7 +76,7 @@ async def main() -> None:
         model_adapter=response_adapter,
         ambient_model_adapter=ambient_adapter,
         memory=memory,
-        postgres=postgres,
+        store=store,
         library=library,
         codebase=codebase,
         day_night=day_night,
@@ -109,4 +95,3 @@ async def main() -> None:
         await bot.run_bot()
     finally:
         memory.save()
-        await postgres.close()
