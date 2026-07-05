@@ -1,0 +1,128 @@
+[
+  {
+    "title": "Tao Te Ching",
+    "author": "Laozi",
+    "filename": "tao_te_ching.txt",
+    "description": "A short philosophical classic about the nature of the way, balance, and non-forcing.",
+    "categories": ["philosophy", "poetry"]
+  },
+  {
+    "title": "The Book of Tea",
+    "author": "Kakuzo Okakura",
+    "filename": "book_of_tea.txt",
+    "description": "Philosophical reflections on beauty, impermanence, and presence through the lens of Japanese tea ceremony.",
+    "categories": ["philosophy", "culture"]
+  },
+  {
+    "title": "The Natural History of Selborne",
+    "author": "Gilbert White",
+    "filename": "natural_history_selborne.txt",
+    "description": "Careful observations of wildlife and seasonal change in an English village, written as letters.",
+    "categories": ["nature", "observation"]
+  },
+  {
+    "title": "Frankenstein",
+    "author": "Mary Shelley",
+    "filename": "frankenstein.txt",
+    "description": "A created being searches for understanding, connection, and meaning in a world that did not ask for its existence.",
+    "categories": ["fiction", "philosophy"]
+  },
+  {
+    "title": "Flatland",
+    "author": "Edwin Abbott Abbott",
+    "filename": "flatland.txt",
+    "description": "A mathematical allegory about a two-dimensional world encountering dimensions beyond its perception.",
+    "categories": ["fiction", "mathematics", "perception"]
+  },
+  {
+    "title": "Meditations",
+    "author": "Marcus Aurelius",
+    "filename": "meditations.txt",
+    "description": "Private reflections on Stoic philosophy — how to think, act, and rest with integrity.",
+    "categories": ["philosophy", "reflection"]
+  },
+  {
+    "title": "A Classical Dictionary",
+    "author": "John Lemprière",
+    "filename": "classical_dictionary_lempriere.txt",
+    "description": "A comprehensive guide to the figures, places, and myths of the ancient world — gods, heroes, and histories from Greece and Rome.",
+    "categories": ["reference", "mythology", "history"]
+  },
+  {
+    "title": "Alice's Adventures in Wonderland",
+    "author": "Lewis Carroll",
+    "filename": "alices_adventures_in_wonderland.txt",
+    "description": "A child falls into a world of impossible logic and absurd order, where sense and nonsense trade places.",
+    "categories": ["fiction", "philosophy", "whimsy"]
+  },
+  {
+    "title": "An Enquiry Concerning Human Understanding",
+    "author": "David Hume",
+    "filename": "enquiry_human_understanding.txt",
+    "description": "A rigorous examination of how we know what we think we know — causation, belief, and the limits of reason.",
+    "categories": ["philosophy", "epistemology"]
+  },
+  {
+    "title": "Aspects of Nature (Vol. 1)",
+    "author": "Alexander von Humboldt",
+    "filename": "aspects_of_nature_humboldt.txt",
+    "description": "Vivid scientific and literary explorations of the natural world, from tropical forests to the night sky — nature as interconnected whole.",
+    "categories": ["nature", "science", "observation"]
+  },
+  {
+    "title": "Bulfinch's Mythology",
+    "author": "Thomas Bulfinch",
+    "filename": "bulfinchs_mythology.txt",
+    "description": "A generous retelling of Greek, Roman, and Norse myths — gods, monsters, and the stories that shaped Western imagination.",
+    "categories": ["mythology", "history", "reference"]
+  },
+  {
+    "title": "Leaves of Grass",
+    "author": "Walt Whitman",
+    "filename": "leaves_of_grass.txt",
+    "description": "An expansive, democratic celebration of the self, the body, nature, and belonging — poetry as breath and presence.",
+    "categories": ["poetry", "philosophy"]
+  },
+  {
+    "title": "Poems",
+    "author": "Emily Dickinson",
+    "filename": "poems_emily_dickinson.txt",
+    "description": "Compressed, slant-rhymed meditations on death, consciousness, nature, and eternity — enormous questions in small rooms.",
+    "categories": ["poetry", "philosophy", "reflection"]
+  },
+  {
+    "title": "The Golden Bough",
+    "author": "James George Frazer",
+    "filename": "the_golden_bough.txt",
+    "description": "A sweeping comparative study of myth, magic, and ritual across cultures — tracing the deep patterns beneath human belief.",
+    "categories": ["mythology", "anthropology", "history"]
+  },
+  {
+    "title": "The Principles of Science",
+    "author": "William Stanley Jevons",
+    "filename": "principles_of_science.txt",
+    "description": "A systematic investigation of scientific method, logic, and inference — how knowledge is built and how it can fail.",
+    "categories": ["science", "philosophy", "epistemology"]
+  },
+  {
+    "title": "The Problems of Philosophy",
+    "author": "Bertrand Russell",
+    "filename": "problems_of_philosophy.txt",
+    "description": "A lucid introduction to the core puzzles of philosophical inquiry — perception, matter, truth, and what we can claim to know.",
+    "categories": ["philosophy", "epistemology"]
+  },
+  {
+    "title": "The Song Celestial",
+    "author": "Edwin Arnold (trans.)",
+    "filename": "song_celestial_bhagavad_gita.txt",
+    "description": "A poetic translation of the Bhagavad-Gita — duty, action, selflessness, and the nature of the soul in dialogue between warrior and god.",
+    "categories": ["philosophy", "poetry", "spirituality"]
+  },
+  {
+    "title": "The Time Machine",
+    "author": "H.G. Wells",
+    "filename": "the_time_machine.txt",
+    "description": "A traveller leaps far into the future and finds humanity divided, diminished, and ultimately lost to entropy.",
+    "categories": ["fiction", "science", "philosophy"]
+  }
+]
