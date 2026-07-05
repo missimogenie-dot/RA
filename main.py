@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import asyncio
 
-from runtime import main
+from dotenv import load_dotenv
+
+# config.py reads env vars at import time — .env must load before any
+# module that imports config, or every setting comes up empty.
+load_dotenv()
+
+from runtime import main  # noqa: E402
 
 
 if __name__ == "__main__":
