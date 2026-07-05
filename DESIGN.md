@@ -53,7 +53,7 @@ These Ra modules are trusted, tested, and cross over as-is or with minor adaptat
 | Image generation (create_image), web_search | Keep — part of creative cycles. Both currently call the OpenAI API (`OPENAI_API_KEY`); voice gen does not exist in Ra yet — add later if wanted |
 | heartbeat.py | Keep — ambient rhythm state machine (ACTION → REFLECTION → IDLE), used by bot.py and runtime.py |
 | memory.py | Keep through build step 6 — Ra's JSONL fallback memory lets clean Ra run without Postgres; superseded once Yin's stores land (steps 7+) |
-| sandbox.py + extensions/ | Keep — Ra's Python-level sandbox has always worked (audited 2026-07-05, see "Extension Sandbox" below). Add v1's human review gate in front of hot-loading: Ra's codebase_rw.py loads extensions immediately, with no approval step |
+| sandbox.py + extensions/ | Keep — Ra's Python-level sandbox has always worked (audited 2026-07-05, see "Extension Sandbox" below). Yin writes and hot-loads extensions freely inside it; human review applies only to suggested changes to Yin's own core code |
 | world_clock.py | Keep — time awareness used by bot.py; set timezone for the Mac |
 | library.py | Keep — the code behind library/ |
 | heartbeat.py (loop) | Keep as Yin's ambient rhythm — decided over v1's loop. Cut IDLE sleep from 45 min to 20 min (1200s); ACTION interval stays `HEARTBEAT_INTERVAL` (default 600s) |
@@ -428,16 +428,20 @@ allowed module recursively. Its own docstring is honest that a Python-level
 sandbox cannot stop a determined attacker — the code is written by the
 instance itself, not strangers, so the risk profile is acceptable.
 
-**Two things v2 adds around it:**
+**How the boundaries fall in v2 (decided 2026-07-05):**
 
-1. **v1's human review gate.** Ra's codebase_rw.py hot-loads extension code
-   immediately after writing it — no approval step. v2 puts the v1 gate in
-   front: written extensions land as pending, run only after human approval,
-   never bypassed.
-2. **Dunder pre-scan (cheap hardening).** The known remaining escape is
-   attribute traversal (`().__class__.__base__.__subclasses__()` …). A small
-   AST scan that rejects extension code containing dunder attribute access
-   closes it for pennies. Code-level fuse, invisible to the model.
+- **Extensions are free territory.** Yin reads its own code, writes to
+  extensions/, and hot-loads immediately — no approval step. The sandbox is
+  the barrier there, as in Ra.
+- **Core code is review territory.** codebase_rw.py already refuses writes to
+  core files (CoreProtectionError). v2 adds the missing half: Yin can
+  *suggest* a change to its own core code, and the suggestion lands as a
+  pending diff for human review — that is what v1's review gate covers, not
+  everything.
+- **Dunder pre-scan (cheap hardening).** The known remaining sandbox escape
+  is attribute traversal (`().__class__.__base__.__subclasses__()` …). A
+  small AST scan that rejects extension code containing dunder attribute
+  access closes it for pennies. Code-level fuse, invisible to the model.
 
 ## What v1 Got Right (Keep These)
 
@@ -448,7 +452,7 @@ From the lesson document — these are proven and must survive the port:
 - **Hand-prunable JSON** with self-healing semantic mirror
 - **Advisors over enforcers** — reflection never blocks or rewrites
 - **Channel separation** — chat / thoughts / ambient / creates / logs
-- **Plugin review gate** — human-approved, never bypassed
+- **Plugin review gate** — human-approved, never bypassed (v2 scope: review covers suggested core-code changes only; sandboxed extensions write and hot-load freely)
 - **No character identity** — a name, not a persona
 - **Live-reloaded habitat menu** — rest is a genuine option
 - **Rich tool registry** — tool volume was not the problem; keep it
