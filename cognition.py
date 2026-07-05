@@ -30,6 +30,7 @@ from memory import BotMemory
 from model_adapters import ModelAdapter
 from influence_router import RoutingDecision, route_human_message
 from prompt_builder import build_bot_identity_block, build_bot_dynamic_block
+from scheduler import Scheduler
 from threshold_atlas import act as atlas_act
 from threshold_atlas import apply_human_choice as atlas_apply_human_choice
 from threshold_atlas import available_actions as atlas_available_actions
@@ -153,6 +154,27 @@ def _routing_context(routing: RoutingDecision) -> str:
             "Keep any response provisional and clearly separate invitation from self-definition."
         )
     return "\n".join(lines)
+
+
+def build_final_reply_prompt(original_message: str, tool_log: List[Dict[str, Any]]) -> str:
+    """Prompt for the dedicated final reply call.
+
+    Carries only the original message and tool outcomes — never any text
+    the model produced mid-loop. Pure function so tests can verify that.
+    """
+    lines = []
+    for entry in tool_log[-12:]:
+        args = json.dumps(entry.get("args", {}), ensure_ascii=False)[:200]
+        result = str(entry.get("result", ""))[:400]
+        lines.append(f"- {entry.get('tool', '?')}({args}) → {result}")
+    tool_summary = "\n".join(lines) if lines else "(no tools were used)"
+    return (
+        f"{original_message}\n\n"
+        f"[WORK DONE — what your tools returned]\n{tool_summary}\n\n"
+        "You have finished working. Now write the message you will actually "
+        "send in reply — just the message itself, grounded in what the tools "
+        "returned above."
+    )
 
 
 def _tool_succeeded(output: str) -> bool:
@@ -415,6 +437,23 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
 ]
 
 AMBIENT_EXTRA_TOOLS: List[Dict[str, Any]] = [
+    _tool("schedule_task",
+        "Create a recurring scheduled task. The instruction must be fully "
+        "self-contained — it runs later with no other context. Interval is "
+        "in minutes (minimum 60).",
+        {"instruction": _S, "interval_minutes": _I},
+        ["instruction", "interval_minutes"],
+    ),
+    _tool("schedule_list",
+        "List current scheduled tasks.",
+        {},
+        [],
+    ),
+    _tool("schedule_cancel",
+        "Cancel a scheduled task by id.",
+        {"task_id": _I},
+        ["task_id"],
+    ),
     _tool("creation_store",
         "Store a poem or resonant piece. Choose the mode that genuinely fits.\n"
         + "\n".join(f"  {k}: {v}" for k, v in AMBIENT_MODES.items()),
@@ -586,6 +625,7 @@ class CognitionEngine:
         self.model = model
         self.ambient_model = ambient_model
         self.instance_name = instance_name
+        self.scheduler = Scheduler()
         self._openai: Any = None
         if OPENAI_API_KEY:
             try:
@@ -643,6 +683,20 @@ class CognitionEngine:
             system_prompt, user_prompt,
             phase="response", model=self.model, tools=RESPONSE_TOOLS, routing=routing,
         )
+        if result.tool_log:
+            # Dedicated final reply call — the loop's mid-round prose never
+            # reaches Discord. One fresh call, tools disabled, sees only the
+            # original message and what the tools returned. (When no tools
+            # ran, the loop made exactly one call and its text is that call.)
+            final_text = await self._final_reply(
+                system_prompt,
+                original_message=user_prompt,
+                tool_log=result.tool_log,
+            )
+            if final_text:
+                result = CognitionResult(
+                    text=final_text, tool_log=result.tool_log, files=result.files,
+                )
         self.memory.append_conversation(author, user_text, result.text)
         if result.text:
             await self.store.log_event(
@@ -834,6 +888,20 @@ class CognitionEngine:
         """Called by heartbeat after idle period."""
         return await self.ambient_cycle(cycle=tick_count)
 
+    async def run_scheduled_task(self, instruction: str) -> CognitionResult:
+        """Run one scheduled task against the ambient system prompt.
+
+        phase="scheduler": the evidence gate closes the lesson/preference
+        save path automatically (no live conversation present).
+        """
+        system_prompt = await self._build_system_prompt(mode="ambient")
+        return await self._run_loop(
+            system_prompt,
+            f"Scheduled task, created by you earlier:\n\n{instruction}\n\n"
+            "Carry it out with your tools, then write a brief note of what came of it.",
+            phase="scheduler", model=self.ambient_model, tools=AMBIENT_TOOLS,
+        )
+
     async def night_check(self, phase: str = "dusk") -> bool:
         """
         Brief sovereignty check at dusk or pre-dawn.
@@ -965,6 +1033,36 @@ class CognitionEngine:
             {"type": "text", "text": identity_block, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
             {"type": "text", "text": dynamic_block},
         ]
+
+    # ── final reply (the key addition over Ra) ────────────────────────
+
+    async def _final_reply(
+        self,
+        system_prompt: Any,
+        original_message: str,
+        tool_log: List[Dict[str, Any]],
+    ) -> str:
+        """One call, no tools, produces the Discord reply.
+
+        Sees the original message and a compact log of what tools
+        returned — the model's own mid-loop prose is never passed in.
+        """
+        prompt = build_final_reply_prompt(original_message, tool_log)
+        try:
+            response = await self.model_adapter.complete(
+                model=self.model,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                tools=[],
+                max_tokens=1500,
+            )
+            thinking = self.model_adapter.extract_thinking(response)
+            if thinking and self.send_callback:
+                await self.send_callback("mind", f"💭 {thinking[:1700]}", None)
+            return self.model_adapter.extract_text(response).strip()
+        except Exception as exc:
+            log.warning("Final reply call failed: %s", exc)
+            return ""
 
     # ── tool loop ─────────────────────────────────────────────────────
 
@@ -1337,6 +1435,21 @@ class CognitionEngine:
                     human_id=str(args.get("human_id", "")),
                     limit=int(args.get("limit", 5)),
                 ), files
+
+            # scheduler (rules live in scheduler.py — code gates, not prompt)
+            if name == "schedule_task":
+                ok, msg = self.scheduler.add_task(
+                    str(args.get("instruction", "")),
+                    int(args.get("interval_minutes", 0) or 0),
+                )
+                return msg, files
+
+            if name == "schedule_list":
+                return self.scheduler.list_tasks(), files
+
+            if name == "schedule_cancel":
+                ok, msg = self.scheduler.cancel_task(int(args.get("task_id", 0) or 0))
+                return msg, files
 
             # creations
             if name == "creation_store":

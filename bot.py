@@ -25,6 +25,7 @@ from config import (
     DM_COMMANDS_ENABLED,
     DM_INITIATIONS_ENABLED,
     DM_NOTEBOOK_REMINDERS,
+    DREAM_HOUR,
     GAMES_CHANNEL_ID,
     GAMES_CHANNEL_NAME,
     GENERAL_CHANNEL_NAME,
@@ -39,6 +40,7 @@ from config import (
     RUNTIME_STATE_DIR,
     THOUGHTS_CHANNEL_NAME,
 )
+from dream_cycle import DreamCycle
 from heartbeat import Heartbeat
 from influence_router import is_acknowledgement_only, is_no_reply_marker
 from memory import BotMemory
@@ -145,6 +147,7 @@ class BotClient(discord.Client):
         self._ambient_enabled = AMBIENT_ENABLED
         self._human_turn_count = 0
         self._last_activity = "startup"
+        self._last_dream_date = ""
         self.world_clock = WorldClock(Path(RUNTIME_STATE_DIR))
 
     async def setup_hook(self) -> None:
@@ -435,6 +438,9 @@ class BotClient(discord.Client):
                     desc = day_night.describe() if day_night else "morning"
                     await self.send_named("mind", f"Day begun ({desc}). Resuming.")
 
+                await self._maybe_dream()
+                await self._run_due_scheduled_tasks()
+
                 state = self.heartbeat.tick()
                 self._last_activity = f"heartbeat: {state}"
                 if state == "IDLE":
@@ -452,6 +458,41 @@ class BotClient(discord.Client):
                 log.exception("Heartbeat loop error")
                 await self.send_named("logs", f"Heartbeat error: `{exc}`")
             await asyncio.sleep(self.heartbeat.sleep_for)
+
+    async def _maybe_dream(self) -> None:
+        """Run the 3am consolidation once per day, under the process lock."""
+        from datetime import datetime
+
+        now = datetime.now()
+        today = now.date().isoformat()
+        if now.hour != DREAM_HOUR or self._last_dream_date == today:
+            return
+        self._last_dream_date = today
+        self._last_activity = "dream cycle"
+        async with self._process_lock:
+            dream = DreamCycle(
+                self.cognition.ambient_model_adapter,
+                self.cognition.ambient_model,
+                self.cognition.store.yin,
+                self.cognition.store.logs,
+            )
+            paragraph = await dream.run()
+            await self.send_named("mind", f"🌙 Dream cycle:\n{paragraph[:1500]}")
+
+    async def _run_due_scheduled_tasks(self) -> None:
+        """Run any due Yin-created tasks against the ambient prompt."""
+        if self._process_lock.locked():
+            return
+        for task in self.cognition.scheduler.due_tasks():
+            self._last_activity = f"scheduled task {task['id']}"
+            async with self._process_lock:
+                result = await self.cognition.run_scheduled_task(task["instruction"])
+                self.cognition.scheduler.mark_ran(
+                    task["id"], (result.text or "")[:400]
+                )
+                if result.text:
+                    await self.send_named("ambient", result.text[:1800], result.files or None)
+                await self._stream_trace(result)
 
     async def _run_ambient(self) -> None:
         """Run one ambient cycle under the process lock and stream the trace."""

@@ -103,6 +103,9 @@ EXTENSIONS_WRITE_ENABLED: bool = _bool("EXTENSIONS_WRITE_ENABLED", "false")
 
 GAME_STATE_PATH: Path = Path(os.getenv("GAME_STATE_PATH", str(RUNTIME_STATE_DIR / "threshold_atlas_state.json")))
 
+# Dream cycle — local hour for the nightly consolidation
+DREAM_HOUR: int = int(os.getenv("DREAM_HOUR", "3"))
+
 # Day/night cycle (UTC hours). Default: 06:00–18:00 day, 18:00–06:00 night.
 DAY_NIGHT_ENABLED: bool = _bool("DAY_NIGHT_ENABLED", "false")
 DAY_START_HOUR: int = int(os.getenv("DAY_START_HOUR", "6"))

@@ -49,9 +49,9 @@ Its CLAUDE.md opens with a retirement notice. A full archive sits at
 8. ~~Add ChromaDB layer on top of JSON stores~~ ✅ (2026-07-05: mirror.py — Chroma with pure-Python fallback, nomic-embed-text via Ollama, verified end-to-end on the Mac)
 9. Add Neo4j store and KG consolidator
 10. Add mentor.py (reflection pass)
-11. Add dream cycle
-12. Add scheduler
-13. Add the dedicated final reply call to cognition
+11. ~~Add dream cycle~~ ✅ (2026-07-05: dream_cycle.py — salience split, model-written autobiography paragraph, runs at DREAM_HOUR via bot heartbeat; KG prune joins at step 9)
+12. ~~Add scheduler~~ ✅ (2026-07-05: scheduler.py — SQLite, named-person gate at storage, ambient prompt, evidence gate closes saves; tools ambient-only)
+13. ~~Add the dedicated final reply call~~ ✅ (2026-07-05: cognition._final_reply — every tool-using chat reply comes from one tools-off call that sees only the original message + tool log, never mid-loop prose)
 14. Add consult (cloud adapter, fuses, consult log)
 15. Tests for each module before the next is built
 16. Threshold Atlas is already tested — keep its suite running
