@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -22,6 +24,7 @@ from config import (
     OPENAI_WEB_MODEL,
 )
 from codebase_rw import CodebaseRW
+from consult import Consult
 from day_night import DayNightCycle
 from identity import AMBIENT_MODES, CYCLE_CHOICES
 from yin.bridge import YinStore
@@ -29,8 +32,11 @@ from library import Library
 from memory import BotMemory
 from model_adapters import ModelAdapter
 from influence_router import RoutingDecision, route_human_message
+from kg_consolidator import KGConsolidator
+from mentor import Mentor
 from prompt_builder import build_bot_identity_block, build_bot_dynamic_block
-from scheduler import Scheduler
+from scheduler import Scheduler, names_person
+from yin.memory.neo4j_store import Neo4jStore
 from threshold_atlas import act as atlas_act
 from threshold_atlas import apply_human_choice as atlas_apply_human_choice
 from threshold_atlas import available_actions as atlas_available_actions
@@ -256,6 +262,12 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
         {"query": _S, "limit": _I, "status_filter": _S, "type_filter": _S},
         ["query"],
     ),
+    _tool("kg_search",
+        "Search the knowledge graph — facts about the world as "
+        "(subject)-[predicate]->(object) connections.",
+        {"query": _S, "limit": _I},
+        ["query"],
+    ),
     _tool("memory_recent",
         "Retrieve recent interpretations. Optionally filter by type, status, or tag.",
         {"limit": _I, "type": _S, "status": _S, "tag": _S},
@@ -454,6 +466,29 @@ AMBIENT_EXTRA_TOOLS: List[Dict[str, Any]] = [
         {"task_id": _I},
         ["task_id"],
     ),
+    _tool("kg_add_fact",
+        "Add one world-knowledge fact to the graph as a subject/predicate/object triple. "
+        "World knowledge only — facts about people belong in human memory.",
+        {"subject": _S, "predicate": _S, "object": _S},
+        ["subject", "predicate", "object"],
+    ),
+    _tool("kg_prune",
+        "Remove orphan nodes (no connections) from the knowledge graph.",
+        {},
+        [],
+    ),
+    _tool("consult",
+        "Put one hard, self-contained question to a larger model — the way "
+        "you ask a teacher. One question, one answer, no session. The "
+        "advisor knows only what you write into the question.",
+        {"question": _S},
+        ["question"],
+    ),
+    _tool("consult_log_read",
+        "Read recent consults and their answers.",
+        {"limit": _I},
+        [],
+    ),
     _tool("creation_store",
         "Store a poem or resonant piece. Choose the mode that genuinely fits.\n"
         + "\n".join(f"  {k}: {v}" for k, v in AMBIENT_MODES.items()),
@@ -626,6 +661,20 @@ class CognitionEngine:
         self.ambient_model = ambient_model
         self.instance_name = instance_name
         self.scheduler = Scheduler()
+        self.graph = Neo4jStore()
+        self.kg_consolidator = KGConsolidator(
+            self.ambient_model_adapter, self.ambient_model,
+            self.graph, self.store.yin.world, self.store.logs,
+            instance_name=self.instance_name,
+        )
+        self._turn_count = 0
+        self.consult = Consult()
+        self.mentor = Mentor(
+            self.ambient_model_adapter,
+            os.getenv("MENTOR_MODEL", "") or self.ambient_model,
+            self.store.yin, self.store.logs,
+            instance_name=self.instance_name,
+        )
         self._openai: Any = None
         if OPENAI_API_KEY:
             try:
@@ -707,6 +756,15 @@ class CognitionEngine:
                 bot_id=self.instance_name,
                 human_id=scoped_human_id,
             )
+        # Observe: every 5th turn, queue the KG consolidator (non-blocking).
+        self._turn_count += 1
+        if self._turn_count % 5 == 0:
+            turns = self.memory.read_recent("conversations", limit=5)
+            turns_text = "\n".join(
+                f"Human: {t.get('user_text', '')}\n{self.instance_name}: {t.get('assistant_text', '')}"
+                for t in turns
+            )
+            asyncio.create_task(self.kg_consolidator.run(turns_text))
         return result
 
     def _format_message_context(
@@ -1435,6 +1493,40 @@ class CognitionEngine:
                     human_id=str(args.get("human_id", "")),
                     limit=int(args.get("limit", 5)),
                 ), files
+
+            # consult (ambient/dream only — the tool is not in the chat set)
+            if name == "consult":
+                return await self.consult.ask(str(args.get("question", ""))), files
+
+            if name == "consult_log_read":
+                return self.consult.log_read(int(args.get("limit", 5) or 5)), files
+
+            # knowledge graph
+            if name == "kg_search":
+                return await self.graph.search(
+                    str(args.get("query", "")), limit=int(args.get("limit", 8) or 8)
+                ), files
+
+            if name == "kg_add_fact":
+                subject = str(args.get("subject", ""))
+                obj = str(args.get("object", ""))
+                # Person facts belong in the human lane — code gate, not prompt.
+                if names_person(subject) or names_person(obj):
+                    return (
+                        "That is a fact about a person — it belongs in human "
+                        "memory, not the world graph. save_human_memory holds it."
+                    ), files
+                ok, msg = await self.graph.add_fact(
+                    subject, str(args.get("predicate", "")), obj
+                )
+                if ok:
+                    self.store.yin.world.add(
+                        f"{subject} {args.get('predicate', '')} {obj}"
+                    )
+                return msg, files
+
+            if name == "kg_prune":
+                return await self.graph.prune_orphans(), files
 
             # scheduler (rules live in scheduler.py — code gates, not prompt)
             if name == "schedule_task":

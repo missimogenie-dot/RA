@@ -29,12 +29,13 @@ from .preferences import PreferenceManager
 from .timeline import Timeline
 from .vestibule import Vestibule
 from .working import WorkingMemory
+from .world import WorldKnowledge
 
 CONTEXT_LANES: Dict[str, List[str]] = {
     "chat": ["human", "notebook", "lessons", "goals", "preferences", "working"],
     "reflection": ["human", "notebook", "lessons", "goals", "preferences", "working", "vestibule"],
-    "ambient": ["lessons", "goals", "preferences", "autobiography", "vestibule"],
-    "dream": ["working", "autobiography"],
+    "ambient": ["lessons", "goals", "preferences", "autobiography", "vestibule", "world"],
+    "dream": ["working", "autobiography", "world"],
     "scheduler": ["goals", "lessons"],
 }
 
@@ -53,6 +54,7 @@ class YinMemory:
         self.working = WorkingMemory()
         self.notebook = Notebook()
         self.vestibule = Vestibule()
+        self.world = WorldKnowledge(mirror=mirrors.get("world_knowledge"))
 
     def recall(self, context: str, query: str, user_id: str = "", k: int = 4) -> str:
         lanes = CONTEXT_LANES.get(context)
@@ -77,4 +79,6 @@ class YinMemory:
             sections.append(f"[WORKING]\n{self.working.read(10)}")
         if "vestibule" in lanes:
             sections.append(f"[VESTIBULE]\n{self.vestibule.check()}")
+        if "world" in lanes:
+            sections.append(f"[WORLD]\n{self.world.search(query, k=k)}")
         return "\n\n".join(sections)

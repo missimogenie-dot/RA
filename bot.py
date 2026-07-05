@@ -152,6 +152,7 @@ class BotClient(discord.Client):
 
     async def setup_hook(self) -> None:
         self.cognition.send_callback = self._send_callback
+        self.cognition.mentor.send_callback = self._send_callback
 
     async def on_ready(self) -> None:
         log.info("Connected as %s (%s)", self.user, getattr(self.user, "id", "?"))
@@ -252,6 +253,11 @@ class BotClient(discord.Client):
 
         await self._send_result(message.channel, result)
         await self._stream_trace(result)
+        if result.text:
+            # Mentor reflection — async, after the reply is out. Never blocks.
+            asyncio.create_task(
+                self.cognition.mentor.reflect(content, result.text, str(message.author.id))
+            )
         self._last_activity = f"human turn #{self._human_turn_count}: {'no reply' if not result.text else 'complete'}"
 
     def _message_context(
@@ -475,6 +481,7 @@ class BotClient(discord.Client):
                 self.cognition.ambient_model,
                 self.cognition.store.yin,
                 self.cognition.store.logs,
+                graph=self.cognition.graph,
             )
             paragraph = await dream.run()
             await self.send_named("mind", f"🌙 Dream cycle:\n{paragraph[:1500]}")

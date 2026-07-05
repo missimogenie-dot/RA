@@ -56,14 +56,18 @@ def split_by_salience(
 
 
 class DreamCycle:
-    def __init__(self, adapter, model: str, yin_memory, logs) -> None:
+    def __init__(self, adapter, model: str, yin_memory, logs, graph=None) -> None:
         self.adapter = adapter
         self.model = model
         self.yin = yin_memory
         self.logs = logs
+        self.graph = graph
 
     async def run(self) -> str:
         now = datetime.now(timezone.utc)
+        if self.graph is not None:
+            pruned = await self.graph.prune_orphans()
+            self.logs.log_event("system", f"dream cycle: {pruned}")
         entries = self.yin.working.entries()
         if not entries:
             self.logs.log_event("system", "dream cycle: working memory empty, nothing to condense")

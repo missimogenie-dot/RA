@@ -47,12 +47,12 @@ Its CLAUDE.md opens with a retirement notice. A full archive sits at
 6. Verify clean Ra runs on Mac against local model, end to end — NEXT: `pip install -r requirements.txt`, then `python main.py`
 7. ~~Add Yin's JSON memory stores~~ ✅ (2026-07-05: yin/memory/ — all lanes, evidence gate, dedup+rate fuse, retrieval boundaries, 19 tests; wiring into cognition comes with steps 4–6)
 8. ~~Add ChromaDB layer on top of JSON stores~~ ✅ (2026-07-05: mirror.py — Chroma with pure-Python fallback, nomic-embed-text via Ollama, verified end-to-end on the Mac)
-9. Add Neo4j store and KG consolidator
-10. Add mentor.py (reflection pass)
+9. ~~Add Neo4j store and KG consolidator~~ ✅ (2026-07-06: yin/memory/neo4j_store.py + kg_consolidator.py — every 5th turn, worldly triples only, person facts redirected to human lane; world lane (JSON+mirror) makes the graph rebuildable; live-verified, graph left empty)
+10. ~~Add mentor.py (reflection pass)~~ ✅ (2026-07-06: async after reply, advisory, evidence-gated add_lesson/add_preference/update_goal; failures swallowed, never blocks)
 11. ~~Add dream cycle~~ ✅ (2026-07-05: dream_cycle.py — salience split, model-written autobiography paragraph, runs at DREAM_HOUR via bot heartbeat; KG prune joins at step 9)
 12. ~~Add scheduler~~ ✅ (2026-07-05: scheduler.py — SQLite, named-person gate at storage, ambient prompt, evidence gate closes saves; tools ambient-only)
 13. ~~Add the dedicated final reply call~~ ✅ (2026-07-05: cognition._final_reply — every tool-using chat reply comes from one tools-off call that sees only the original message + tool log, never mid-loop prose)
-14. Add consult (cloud adapter, fuses, consult log)
+14. ~~Add consult~~ ✅ (2026-07-06: consult.py — ambient/dream only, one-shot stateless, named-person gate on payloads, daily budget + capped retries + soft redirect, SQLite log. Needs CONSULT_MODEL + API key in .env to activate; dormant until then)
 15. Tests for each module before the next is built
 16. Threshold Atlas is already tested — keep its suite running
 
