@@ -41,7 +41,7 @@ Its CLAUDE.md opens with a retirement notice. A full archive sits at
 
 1. ~~Get Ra onto GitHub (clean, no secrets)~~ ✅
 2. ~~Clone to Mac~~ ✅ (this checkout)
-3. Strip sky, canvas, bridge, resident chat, sitecustomize, reindex_embeddings — nothing else; image gen, web_search, plugins, heartbeat (IDLE cut to 20 min), day/night (toggled off), world_clock, library all stay (see DESIGN.md "What Gets Stripped")
+3. ~~Strip sky, canvas, bridge, resident chat, sitecustomize, reindex_embeddings~~ ✅ (2026-07-05; image gen, web_search, plugins, heartbeat, day/night off, world_clock, library kept — IDLE-to-20-min change lands with the Ollama work)
 4. Swap Postgres → SQLite for event log and tool call log
 5. Write Ollama model adapter (OpenAI-compatible endpoint)
 6. Verify clean Ra runs on Mac against local model, end to end

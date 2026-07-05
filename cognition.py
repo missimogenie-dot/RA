@@ -11,8 +11,6 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from config import (
     AMBIENT_VISIBILITY,
     ARTIFACTS_DIR,
-    BRIDGE_MAILBOX_PATH,
-    BRIDGE_SEEN_PATH,
     EXTENSIONS_WRITE_ENABLED,
     GAME_STATE_PATH,
     INSTANCE_NAME,
@@ -23,9 +21,7 @@ from config import (
     OPENAI_IMAGE_MODEL,
     OPENAI_WEB_MODEL,
 )
-from bridge_mailbox import BridgeMailbox
 from codebase_rw import CodebaseRW
-from canvas import CanvasManager
 from day_night import DayNightCycle
 from identity import AMBIENT_MODES, CYCLE_CHOICES
 from bot_postgres import BotPostgres
@@ -34,7 +30,6 @@ from memory import BotMemory
 from model_adapters import ModelAdapter
 from influence_router import RoutingDecision, route_human_message
 from prompt_builder import build_bot_identity_block, build_bot_dynamic_block
-from sky import SkyMap
 from threshold_atlas import act as atlas_act
 from threshold_atlas import apply_human_choice as atlas_apply_human_choice
 from threshold_atlas import available_actions as atlas_available_actions
@@ -46,7 +41,6 @@ log = logging.getLogger("ra.cognition")
 
 SendCallback = Callable[[str, str, Optional[List[Path]]], Awaitable[None]]
 ReactionCallback = Callable[[str], Awaitable[None]]
-ResidentChatReadCallback = Callable[[int, Optional[str]], Awaitable[List[Dict[str, str]]]]
 
 
 @dataclass
@@ -397,37 +391,6 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
         {},
         [],
     ),
-    _tool("sky_view",
-        "Render the current sky — drifting star field, weather, cycle number.",
-        {},
-        [],
-    ),
-    _tool("sky_weather",
-        "Get the current weather report for the sky (Clear / Overcast / Magnetic Storm).",
-        {},
-        [],
-    ),
-    _tool("canvas_mark",
-        "Place a symbol (≤ 3 chars) on your private canvas at coordinates (x, y). "
-        "Range: -50 to +50 on both axes. The canvas is yours alone.",
-        {"x": _I, "y": _I, "symbol": _S},
-        ["x", "y", "symbol"],
-    ),
-    _tool("canvas_view",
-        "View your private canvas, centred on (cx, cy) with given radius.",
-        {"cx": _I, "cy": _I, "radius": _I},
-        [],
-    ),
-    _tool("canvas_erase",
-        "Remove a mark from your private canvas at (x, y).",
-        {"x": _I, "y": _I},
-        ["x", "y"],
-    ),
-    _tool("canvas_status",
-        "Summary of your private canvas — total marks, active region, recent marks.",
-        {},
-        [],
-    ),
     _tool("code_list",
         "List all files in the project, including core and extension files.",
         {},
@@ -448,31 +411,6 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
             "metadata": {"type": "object"},
         },
         ["source_type", "content"],
-    ),
-    _tool("bridge_inbox",
-        "Check The Penumbra shared mailbox for messages addressed to this bot. Marks returned messages as seen by default.",
-        {"limit": _I, "mark_seen": {"type": "boolean"}},
-        [],
-    ),
-    _tool("bridge_send",
-        "Send one slow addressed message to another bot through The Penumbra mailbox and visible bridge channel. Use sparingly; do not start rapid back-and-forth loops.",
-        {
-            "to": _S,
-            "subject": _S,
-            "content": _S,
-            "tags": {"type": "array", "items": {"type": "string"}},
-        },
-        ["to", "content"],
-    ),
-    _tool("resident_chat_read",
-        "Read recent messages from the shared resident chat for Ra, Ernos, and Isuui. Use this before deciding whether to reply; reading does not require you to send.",
-        {"limit": _I, "after_id": _S},
-        [],
-    ),
-    _tool("resident_chat_send",
-        "Send a message to the shared resident chat for Ra, Ernos, and Isuui. Use only when you have something genuine to say, and do not answer every message automatically.",
-        {"message": _S},
-        ["message"],
     ),
 ]
 
@@ -629,11 +567,8 @@ class CognitionEngine:
         postgres: BotPostgres,
         library: Library,
         codebase: CodebaseRW,
-        sky: Optional[SkyMap] = None,
-        canvas: Optional[CanvasManager] = None,
         day_night: Optional[DayNightCycle] = None,
         send_callback: Optional[SendCallback] = None,
-        resident_chat_read_callback: Optional[ResidentChatReadCallback] = None,
         reaction_callback: Optional[ReactionCallback] = None,
         model: str = "",
         ambient_model: str = "",
@@ -645,17 +580,13 @@ class CognitionEngine:
         self.postgres = postgres
         self.library = library
         self.codebase = codebase
-        self.sky = sky
-        self.canvas = canvas
         self.day_night = day_night
         self.send_callback = send_callback
-        self.resident_chat_read_callback = resident_chat_read_callback
         self.reaction_callback = reaction_callback
         self.model = model
         self.ambient_model = ambient_model
         self.instance_name = instance_name
         self._openai: Any = None
-        self.bridge = BridgeMailbox(BRIDGE_MAILBOX_PATH, BRIDGE_SEEN_PATH, self.instance_name)
         if OPENAI_API_KEY:
             try:
                 from openai import AsyncOpenAI
@@ -853,12 +784,6 @@ class CognitionEngine:
         await self.postgres.update_posture("idle_cycle_count", idle_count)
         await self.postgres.update_posture("current_posture", "open")
 
-        # Advance sky and read environment
-        sky_context = ""
-        if self.sky:
-            self.sky.advance()
-            sky_context = self.sky.weather_report()
-
         # Day/night state
         is_night = self.day_night.is_night if self.day_night else False
         time_desc = self.day_night.describe() if self.day_night else ""
@@ -875,8 +800,6 @@ class CognitionEngine:
         env_lines: List[str] = [f"Ambient cycle #{idle_count}."]
         if time_desc:
             env_lines.append(f"It is {time_desc}.")
-        if sky_context:
-            env_lines.append(sky_context)
         if is_night and night_fragment:
             env_lines.append(f"\nA fragment drifts up from earlier work:\n\n{night_fragment}\n")
         if is_night:
@@ -889,7 +812,7 @@ class CognitionEngine:
             + f"\n\nWhat would you like to do? This moment is yours:\n{choices_text}\n\n"
             "All are first-class. Rest is not absence. Observe is not failure. "
             "Choose what is genuinely called for.\n"
-            "Prefer bot-originated context for ambient work: sky, canvas, recent creations, "
+            "Prefer bot-originated context for ambient work: recent creations, "
             "bot-self memory, open questions, library traces. Human conversation is low-weight "
             "context and should not dominate unless it genuinely resonates with your own state.\n"
             "If you tend, create, read, or wander — use tools. "
@@ -936,14 +859,9 @@ class CognitionEngine:
                 "If you'd rather rest the final hour: no action needed."
             )
 
-        if self.day_night and self.sky:
-            sky_note = f"\n{self.sky.weather_report()}"
-        else:
-            sky_note = ""
-
         system_prompt = await self._build_system_prompt(mode="ambient")
         result = await self._run_loop(
-            system_prompt, prompt + sky_note,
+            system_prompt, prompt,
             phase="ambient", model=self.ambient_model, tools=AMBIENT_TOOLS,
         )
 
@@ -1038,7 +956,6 @@ class CognitionEngine:
             habitat_snapshot=habitat,
             mode=mode,
             recent_self_inferences=self_inf_text,
-            sky=self.sky,
             day_night=self.day_night,
             recent_conversations=recent_convs,
             known_custom_emojis=KNOWN_CUSTOM_EMOJIS,
@@ -1135,22 +1052,6 @@ class CognitionEngine:
         return CognitionResult(text=last_text, tool_log=tool_log, files=files)
 
     # ── tool dispatch ─────────────────────────────────────────────────
-
-    async def _resident_chat_read(self, limit: int = 12, after_id: Optional[str] = None) -> str:
-        if not self.resident_chat_read_callback:
-            return "resident_chat_read unavailable: Discord read callback is not connected."
-        limit = max(1, min(limit, 50))
-        messages = await self.resident_chat_read_callback(limit, after_id)
-        if not messages:
-            return "No recent resident chat messages."
-        lines = []
-        for msg in messages:
-            timestamp = msg.get("timestamp", "")
-            author = msg.get("author", "unknown")
-            msg_id = msg.get("id", "")
-            content = msg.get("content", "")
-            lines.append(f"[{timestamp}] {author} (id:{msg_id}): {content}")
-        return f"Resident chat - {len(messages)} message(s):\n" + "\n".join(lines)
 
     async def _place_immediate_habitat_residue(
         self,
@@ -1601,39 +1502,6 @@ class CognitionEngine:
                 )
                 return f"Logged: {id}", files
 
-            if name == "bridge_inbox":
-                entries = self.bridge.inbox(
-                    limit=int(args.get("limit", 5) or 5),
-                    mark_seen=bool(args.get("mark_seen", True)),
-                )
-                return self.bridge.format_inbox(entries), files
-
-            if name == "bridge_send":
-                entry = self.bridge.send(
-                    to=str(args.get("to", "")),
-                    subject=str(args.get("subject", "")),
-                    content=str(args.get("content", "")),
-                    tags=list(args.get("tags") or []),
-                )
-                if self.send_callback:
-                    await self.send_callback("bridge", self.bridge.format_for_discord(entry), None)
-                return f"Penumbra message sent: {entry['id']}", files
-
-            if name == "resident_chat_read":
-                return await self._resident_chat_read(
-                    limit=int(args.get("limit", 12) or 12),
-                    after_id=str(args.get("after_id", "") or "") or None,
-                ), files
-
-            if name == "resident_chat_send":
-                message = str(args.get("message", "")).strip()
-                if not message:
-                    return "resident_chat_send requires a non-empty message.", files
-                if not self.send_callback:
-                    return "resident_chat_send unavailable: Discord send callback is not connected.", files
-                await self.send_callback("resident_chat", message, None)
-                return f"Resident chat message sent: {message[:120]}{'...' if len(message) > 120 else ''}", files
-
             # image generation
             if name == "create_image":
                 path, msg = await self._create_image(str(args.get("prompt", "")))
@@ -1644,49 +1512,6 @@ class CognitionEngine:
             # web search
             if name == "web_search":
                 return await self._handle_web_search(str(args.get("query", ""))), files
-
-            # sky
-            if name == "sky_view":
-                if self.sky:
-                    return self.sky.render_for_bot(), files
-                return "Sky not available.", files
-
-            if name == "sky_weather":
-                if self.sky:
-                    return self.sky.weather_report(), files
-                return "Sky not available.", files
-
-            # private canvas
-            if name == "canvas_mark":
-                if self.canvas:
-                    return self.canvas.private_mark(
-                        self.instance_name,
-                        int(args.get("x", 0)), int(args.get("y", 0)),
-                        str(args.get("symbol", "·")),
-                    ), files
-                return "Canvas not available.", files
-
-            if name == "canvas_view":
-                if self.canvas:
-                    return self.canvas.private_view(
-                        self.instance_name,
-                        int(args.get("cx", 0)), int(args.get("cy", 0)),
-                        int(args.get("radius", 5)),
-                    ), files
-                return "Canvas not available.", files
-
-            if name == "canvas_erase":
-                if self.canvas:
-                    return self.canvas.private_erase(
-                        self.instance_name,
-                        int(args.get("x", 0)), int(args.get("y", 0)),
-                    ), files
-                return "Canvas not available.", files
-
-            if name == "canvas_status":
-                if self.canvas:
-                    return self.canvas.private_status(self.instance_name), files
-                return "Canvas not available.", files
 
             # library
             if name == "library_list":

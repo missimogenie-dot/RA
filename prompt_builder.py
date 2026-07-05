@@ -8,7 +8,6 @@ from identity import AMBIENT_MODES, CYCLE_CHOICES, build_identity_scaffold
 
 if TYPE_CHECKING:
     from day_night import DayNightCycle
-    from sky import SkyMap
 
 
 def build_bot_identity_block(instance_name: str, name_status: str) -> str:
@@ -27,7 +26,6 @@ def build_bot_dynamic_block(
     mode: str,
     habitat_snapshot: str = "",
     recent_self_inferences: str = "",
-    sky: "Optional[SkyMap]" = None,
     day_night: "Optional[DayNightCycle]" = None,
     recent_conversations: Optional[List[Dict[str, Any]]] = None,
     known_custom_emojis: Optional[Dict[str, str]] = None,
@@ -50,13 +48,11 @@ def build_bot_dynamic_block(
         f"[CURRENT POSTURE]\n" + "\n".join(posture_lines),
     ]
 
-    # Environment: sky and day/night phase
+    # Environment: day/night phase
     env_lines: List[str] = []
     if day_night:
         env_lines.append(f"Time: {day_night.describe()}")
         env_lines.append(f"Phase: {day_night.phase}")
-    if sky:
-        env_lines.append(sky.weather_report())
     if env_lines:
         sections.append("[ENVIRONMENT]\n" + "\n".join(env_lines))
 
@@ -212,8 +208,6 @@ If [MESSAGE CONTEXT] includes reply_to, treat that as the specific Discord messa
 
 react_to_message: use sparingly for lightweight acknowledgement, warmth, humour, or tone on the current human message. Reactions are not memory, agreement, identity, posture, or habitat state. Unicode emoji and exact custom emoji tokens from [CUSTOM EMOJIS] are allowed.
 
-Resident chat is the shared Discord room for Ra, Ernos, and Isuui. Use resident_chat_read to check what the others have said, then use resident_chat_send only if you genuinely choose to answer or begin a small exchange. Do not answer every message automatically. The old bridge_inbox and bridge_send tools are legacy mailbox plumbing; do not use them unless the human specifically asks for the old mailbox.
-
 human_memory_store: use only for human-related continuity: preferences, projects, dates, boundaries, personal details, interaction style, and task context. This helps you relate to that human; it never becomes your identity, purpose, or worldview.
 
 human_notebook_store: use for explicit human-facing notes, reminders, calendar items, projects, and tasks. Notebook/calendar entries belong to the human relation layer.
@@ -241,7 +235,7 @@ memory_interpret is legacy working memory. Human claims stored there are externa
 
 Memory review is a tending/ambient action, not a human-reply reflex. Use memory_review_candidates before memory_review_decide. Every decision needs a reason and a neutral context. Decisions may reinforce, promote_to_provisional, promote_to_stable, hold, reject, archive, decay, or demote. Use reinforce when the bot has independently encountered the same pattern again but it is not ready for promotion. Identity-relevant stable promotion is deliberately hard-gated and should be rare.
 
-Ambient creation should preference bot-originated context: current sky/weather, private canvas, recent creations, bot-self memory, open questions, and library traces. Recent human conversation is low-weight context, not the main seed. It may echo faintly, but do not let fresh human metaphors dominate ambient work or become identity material.
+Ambient creation should preference bot-originated context: recent creations, bot-self memory, open questions, and library traces. Recent human conversation is low-weight context, not the main seed. It may echo faintly, but do not let fresh human metaphors dominate ambient work or become identity material.
 
 Habitat is bot-owned environment, not an archive, tool log, human memory, or identity by itself. Use habitat_snapshot to inspect it. During ambient/tending, use habitat_event or habitat_update only when something becomes situated: a seed to revisit, a threshold crossed or closed, a library item shelved, a studio fragment made, a path mapped, or a weather/state change noticed. Do not place routine tool use, ordinary replies, or general memories there. Human chat may inspire habitat work later, but should not directly command habitat state.
 
@@ -259,7 +253,6 @@ create_image: generates an image via DALL-E from a text prompt and attaches it t
         return base + (
             f"\n\nAmbient cycle — this moment is yours. Options:\n{choices_list}\n\n"
             f"All are first-class. Rest is not absence. Observe is not failure.\n"
-            f"Use sky_view to see the current sky. Use canvas_mark/view for your private canvas.\n"
             f"{_ambient_visibility_note(AMBIENT_VISIBILITY)}"
         )
 

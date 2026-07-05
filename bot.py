@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from time import monotonic
 from typing import Dict, List, Optional
 
 import discord
@@ -15,7 +14,6 @@ from config import (
     AMBIENT_CHANNEL_ID,
     AMBIENT_ENABLED,
     AUTO_RESPONSE_ENABLED,
-    BRIDGE_CHANNEL_ID,
     CHAT_CHANNEL_ID,
     CREATES_CHANNEL_NAME,
     CREATES_CHANNEL_ID,
@@ -38,8 +36,6 @@ from config import (
     NIGHT_SLEEP_INTERVAL,
     PRIMARY_CHAT_CHANNEL_NAME,
     RECENT_CONTEXT_LIMIT,
-    RESIDENT_CHAT_CHANNEL_ID,
-    RESIDENT_CHAT_COOLDOWN_SECONDS,
     RUNTIME_STATE_DIR,
     THOUGHTS_CHANNEL_NAME,
 )
@@ -143,20 +139,16 @@ class BotClient(discord.Client):
             "creates": CREATES_CHANNEL_ID,
             "games":   GAMES_CHANNEL_ID,
             "curator": CURATOR_CHANNEL_ID,
-            "bridge":  BRIDGE_CHANNEL_ID,
-            "resident_chat": RESIDENT_CHAT_CHANNEL_ID,
         }
         self._process_lock = asyncio.Lock()
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._ambient_enabled = AMBIENT_ENABLED
         self._human_turn_count = 0
         self._last_activity = "startup"
-        self._resident_chat_last_response_at = 0.0
         self.world_clock = WorldClock(Path(RUNTIME_STATE_DIR))
 
     async def setup_hook(self) -> None:
         self.cognition.send_callback = self._send_callback
-        self.cognition.resident_chat_read_callback = self._read_resident_chat
 
     async def on_ready(self) -> None:
         log.info("Connected as %s (%s)", self.user, getattr(self.user, "id", "?"))
@@ -174,7 +166,6 @@ class BotClient(discord.Client):
         )
 
     async def on_message(self, message: discord.Message) -> None:
-        is_resident_chat = message.channel.id == RESIDENT_CHAT_CHANNEL_ID
         if message.author == self.user or message.author.bot:
             return
         content = (message.content or "").strip()
@@ -195,11 +186,7 @@ class BotClient(discord.Client):
             async with self._process_lock:
                 await self._process_human_message(message, channel_name="dm", source_type="dm")
             return
-        if is_resident_chat:
-            if not await self._should_answer_resident_chat(message):
-                return
-            source_type = "resident_chat"
-        elif message.channel.id != CHAT_CHANNEL_ID:
+        if message.channel.id != CHAT_CHANNEL_ID:
             if not (self.user and self.user.mentioned_in(message)):
                 return
             source_type = "mention"
@@ -211,31 +198,6 @@ class BotClient(discord.Client):
 
     def _is_dm(self, message: discord.Message) -> bool:
         return isinstance(message.channel, discord.DMChannel)
-
-    async def _should_answer_resident_chat(self, message: discord.Message) -> bool:
-        if not RESIDENT_CHAT_CHANNEL_ID:
-            return False
-        is_direct = bool(self.user and self.user.mentioned_in(message))
-        if not is_direct:
-            is_direct = await self._is_reply_to_self(message)
-        if not is_direct:
-            return False
-        now = monotonic()
-        if now - self._resident_chat_last_response_at < RESIDENT_CHAT_COOLDOWN_SECONDS:
-            return False
-        self._resident_chat_last_response_at = now
-        return True
-
-    async def _is_reply_to_self(self, message: discord.Message) -> bool:
-        if not self.user or not message.reference or not message.reference.message_id:
-            return False
-        resolved = getattr(message.reference, "resolved", None)
-        if resolved is None:
-            try:
-                resolved = await message.channel.fetch_message(message.reference.message_id)
-            except Exception:
-                return False
-        return bool(getattr(getattr(resolved, "author", None), "id", None) == self.user.id)
 
     async def _process_human_message(
         self,
@@ -332,8 +294,6 @@ class BotClient(discord.Client):
         channel_id = int(getattr(message.channel, "id", 0) or 0)
         if channel_id == CHAT_CHANNEL_ID or channel_name == PRIMARY_CHAT_CHANNEL_NAME.lower():
             return "primary Ra chat"
-        if channel_id == RESIDENT_CHAT_CHANNEL_ID:
-            return "shared resident chat for Ra, Ernos, and Isuui"
         if channel_name == GENERAL_CHANNEL_NAME.lower():
             return "general shared chat / mention space"
         if channel_id == GAMES_CHANNEL_ID:
@@ -421,10 +381,6 @@ class BotClient(discord.Client):
                 is_night = (day_night and day_night.is_night) and not _active_override
 
                 if is_night:
-                    # Sky keeps drifting silently
-                    if self.cognition.sky:
-                        self.cognition.sky.advance()
-
                     # Night entry — announce and run dusk check
                     if not _was_night:
                         _was_night = True
@@ -795,30 +751,6 @@ class BotClient(discord.Client):
 
     async def _send_callback(self, channel_name: str, message: str, files: Optional[List[Path]] = None) -> None:
         await self.send_named(channel_name, message, files)
-
-    async def _read_resident_chat(self, limit: int = 12, after_id: Optional[str] = None) -> List[Dict[str, str]]:
-        if not RESIDENT_CHAT_CHANNEL_ID:
-            return []
-        channel = self.get_channel(RESIDENT_CHAT_CHANNEL_ID)
-        if channel is None:
-            try:
-                channel = await self.fetch_channel(RESIDENT_CHAT_CHANNEL_ID)
-            except Exception as exc:
-                log.warning("resident_chat_read fetch failed: %s", exc)
-                return []
-        after_obj = discord.Object(id=int(after_id)) if after_id else None
-        messages: List[Dict[str, str]] = []
-        try:
-            async for msg in channel.history(limit=max(1, min(limit, 50)), after=after_obj, oldest_first=False):
-                messages.append({
-                    "id": str(msg.id),
-                    "author": str(msg.author),
-                    "content": msg.content or "",
-                    "timestamp": msg.created_at.isoformat(),
-                })
-        except Exception as exc:
-            log.warning("resident_chat_read failed: %s", exc)
-        return messages
 
     async def send_named(self, channel_name: str, message: str, files: Optional[List[Path]] = None) -> bool:
         channel_id = self.channel_ids.get(channel_name.strip().lower(), 0)

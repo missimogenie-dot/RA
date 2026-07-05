@@ -2127,8 +2127,7 @@ class BotPostgres:
         if not self.available:
             return "[]"
         action_tools = [
-            "canvas_mark", "canvas_erase", "canvas_status", "canvas_view",
-            "sky_view", "sky_weather", "creation_store", "posture_update",
+            "creation_store", "posture_update",
             "memory_review_decide", "memory_context_create",
             "game_status", "game_act",
         ]

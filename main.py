@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-import sitecustomize  # noqa: F401
 from runtime import main
 
 

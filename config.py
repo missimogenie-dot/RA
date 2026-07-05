@@ -36,9 +36,6 @@ AMBIENT_CHANNEL_ID: int = int(os.getenv("AMBIENT_CHANNEL_ID", "0"))
 CREATES_CHANNEL_ID: int = int(os.getenv("CREATES_CHANNEL_ID", "0"))
 GAMES_CHANNEL_ID: int = int(os.getenv("GAMES_CHANNEL_ID", "0"))
 CURATOR_CHANNEL_ID: int = int(os.getenv("CURATOR_CHANNEL_ID") or os.getenv("ADMIN_CHANNEL_ID", "0"))
-BRIDGE_CHANNEL_ID: int = int(os.getenv("BRIDGE_CHANNEL_ID", "0"))
-RESIDENT_CHAT_CHANNEL_ID: int = int(os.getenv("RESIDENT_CHAT_CHANNEL_ID", "1520835709370368243"))
-RESIDENT_CHAT_COOLDOWN_SECONDS: float = float(os.getenv("RESIDENT_CHAT_COOLDOWN_SECONDS", "120"))
 KNOWN_CUSTOM_EMOJIS: dict[str, str] = _mapping("KNOWN_CUSTOM_EMOJIS", "Ra=<:Ra:1512878568106102816>")
 PRIMARY_CHAT_CHANNEL_NAME: str = os.getenv("PRIMARY_CHAT_CHANNEL_NAME", "ra-chat")
 GENERAL_CHANNEL_NAME: str = os.getenv("GENERAL_CHANNEL_NAME", "general-chat")
@@ -106,16 +103,9 @@ ARTIFACTS_DIR: Path = Path(os.getenv("ARTIFACTS_DIR", str(RUNTIME_STATE_DIR / "a
 EXTENSIONS_DIR: Path = PROJECT_ROOT / "extensions"
 NOTES_DIR: Path = PROJECT_ROOT / "notes"
 LIBRARY_DIR: Path = PROJECT_ROOT / "library"
-BRIDGE_MAILBOX_PATH: Path = Path(os.getenv("BRIDGE_MAILBOX_PATH", r"C:\BOTS\Violet Continuum\the_penumbra_mailbox.jsonl"))
-BRIDGE_SEEN_PATH: Path = RUNTIME_STATE_DIR / "bridge_seen.json"
 
 EXTENSIONS_WRITE_ENABLED: bool = _bool("EXTENSIONS_WRITE_ENABLED", "false")
 
-# Sky
-SKY_STATE_PATH: Path = RUNTIME_STATE_DIR / "sky_state.json"
-
-# Canvas (private only for solo instance)
-CANVAS_DIR: Path = PROJECT_ROOT / "canvas_state"
 GAME_STATE_PATH: Path = Path(os.getenv("GAME_STATE_PATH", str(RUNTIME_STATE_DIR / "threshold_atlas_state.json")))
 
 # Day/night cycle (UTC hours). Default: 06:00–18:00 day, 18:00–06:00 night.
@@ -145,12 +135,9 @@ CORE_FILES: frozenset[str] = frozenset({
     "prompt_builder.py",
     "identity.py",
     "library.py",
-    "bridge_mailbox.py",
     "codebase_rw.py",
     "sandbox.py",
     "requirements.txt",
     "schema.sql",
-    "sky.py",
-    "canvas.py",
     "day_night.py",
 })

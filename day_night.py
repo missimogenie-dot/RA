@@ -3,8 +3,8 @@ Day/Night cycle for the bot environment.
 
 12 hours active (day), 12 hours resting (night), UTC-based.
 Night is an invitation to rest, not a forced shutdown — but the bot
-skips ambient cycles during night to keep costs low. The sky continues
-to drift; Ra just isn't called on to do anything.
+skips ambient cycles during night to keep costs low. The bot just
+isn't called on to do anything.
 
 Configurable via DAY_START_HOUR / DAY_END_HOUR env vars.
 Default: 06:00–18:00 UTC = day, 18:00–06:00 UTC = night.
