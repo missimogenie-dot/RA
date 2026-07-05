@@ -53,10 +53,12 @@ These Ra modules are trusted, tested, and cross over as-is or with minor adaptat
 | Image generation (create_image), web_search | Keep — part of creative cycles. Both currently call the OpenAI API (`OPENAI_API_KEY`); voice gen does not exist in Ra yet — add later if wanted |
 | heartbeat.py | Keep — ambient rhythm state machine (ACTION → REFLECTION → IDLE), used by bot.py and runtime.py |
 | memory.py | Keep through build step 6 — Ra's JSONL fallback memory lets clean Ra run without Postgres; superseded once Yin's stores land (steps 7+) |
-| sandbox.py + extensions/ | Keep — the plugin review gate ("What v1 Got Right") |
+| sandbox.py + extensions/ | Keep — Ra's Python-level sandbox has always worked (audited 2026-07-05, see "Extension Sandbox" below). Add v1's human review gate in front of hot-loading: Ra's codebase_rw.py loads extensions immediately, with no approval step |
 | world_clock.py | Keep — time awareness used by bot.py; set timezone for the Mac |
 | library.py | Keep — the code behind library/ |
-| identity.py | Adapt — Ra's ambient mode/cycle menus; rewrite as Yin's habitat menu (prompts/habitat.yaml), no persona content |
+| heartbeat.py (loop) | Keep as Yin's ambient rhythm — decided over v1's loop. Cut IDLE sleep from 45 min to 20 min (1200s); ACTION interval stays `HEARTBEAT_INTERVAL` (default 600s) |
+| day_night.py | Keep — toggle-able via `DAY_NIGHT_ENABLED` (default false); leave off unless wanted |
+| identity.py | Adapt — Ra's ambient mode/cycle menus; rewrite as Yin's habitat menu (prompts/habitat.yaml), no persona content. Yin v1's kernel (~/Projects/yin) is the alternative reference — either works |
 
 ## What Gets Stripped from Ra
 
@@ -67,16 +69,17 @@ Remove entirely — do not port:
 - bridge_mailbox.py — inter-bot messaging, not relevant here
 - bot_postgres.py and schema.sql — replaced by SQLite + JSON
 - Resident chat tools (resident_chat_read, resident_chat_send)
-- Day/night cycle (day_night.py) — dream cycle handles time differently
 - sitecustomize.py — Windows/PM2 startup shim, not needed on the Mac
 - reindex_embeddings.py — one-off Postgres reindex script, goes with Postgres
 
 Nothing else gets stripped. Image gen, web_search, the plugin system
-(sandbox.py + extensions/), heartbeat, world_clock, and the library all stay —
-the cut is memory (replaced by Yin's architecture) and the Yin-inappropriate
-influences above, not Ra's affordances.
+(sandbox.py + extensions/), heartbeat, day/night (toggled off), world_clock,
+and the library all stay — the cut is memory (replaced by Yin's architecture)
+and the Yin-inappropriate influences above, not Ra's affordances. Sky goes
+because sky weather alters mood/output — too influential; day/night stays
+because it is toggle-able.
 
-Note: day_night, sky, and canvas are imported by cognition.py, runtime.py, and
+Note: sky and canvas are imported by cognition.py, runtime.py, and
 prompt_builder.py — stripping means removing those imports and handlers, not
 just deleting files.
 
@@ -205,7 +208,12 @@ async def _final_reply(
 
 ## Habitat and Ambient Cycle
 
-Yin's ambient cycle replaces Ra's, stripped of sky/canvas/day-night influences. The menu is affordance-only, pointing outward:
+**Rhythm (decided 2026-07-05):** Yin uses Ra's heartbeat loop (heartbeat.py),
+not v1's — it's the more chill of the two. One change: cut the IDLE sleep from
+45 min (2700s) to 20 min (1200s). ACTION interval stays `HEARTBEAT_INTERVAL`
+(default 600s).
+
+Yin's ambient cycle replaces Ra's, stripped of sky/canvas influences (day/night stays available but toggled off). The menu is affordance-only, pointing outward:
 
 ```yaml
 # yin/prompts/habitat.yaml
@@ -407,6 +415,30 @@ CONSULT_DAILY_BUDGET=8
 CONSULT_MAX_RETRIES=2
 ```
 
+## Extension Sandbox (audited 2026-07-05)
+
+Ra's sandbox.py carries over — v1's sandbox had a lot of issues; Ra's has
+always worked. What the audit found:
+
+**Solid for its threat model.** Allowlist-first imports (default deny, ~30
+safe stdlib modules), dangerous builtins stripped (`exec`, `eval`, `open`,
+`__import__`, `getattr`, …), and it closes the classic naive escape
+(`json.decoder.__builtins__["open"]`) by scrubbing `__builtins__` from every
+allowed module recursively. Its own docstring is honest that a Python-level
+sandbox cannot stop a determined attacker — the code is written by the
+instance itself, not strangers, so the risk profile is acceptable.
+
+**Two things v2 adds around it:**
+
+1. **v1's human review gate.** Ra's codebase_rw.py hot-loads extension code
+   immediately after writing it — no approval step. v2 puts the v1 gate in
+   front: written extensions land as pending, run only after human approval,
+   never bypassed.
+2. **Dunder pre-scan (cheap hardening).** The known remaining escape is
+   attribute traversal (`().__class__.__base__.__subclasses__()` …). A small
+   AST scan that rejects extension code containing dunder attribute access
+   closes it for pennies. Code-level fuse, invisible to the model.
+
 ## What v1 Got Right (Keep These)
 
 From the lesson document — these are proven and must survive the port:
@@ -425,7 +457,7 @@ From the lesson document — these are proven and must survive the port:
 
 1. Get Ra onto GitHub from Windows (clean commit, no secrets)
 2. Clone to Mac
-3. Strip sky, canvas, bridge, resident chat, day/night, sitecustomize, reindex_embeddings (image gen and web_search stay)
+3. Strip sky, canvas, bridge, resident chat, sitecustomize, reindex_embeddings (image gen, web_search, and day/night — toggled off — stay)
 4. Swap Postgres → SQLite for event log and tool call log
 5. Write Ollama model adapter (OpenAI-compatible endpoint)
 6. Verify clean Ra runs on Mac against local model, end to end
