@@ -38,6 +38,11 @@ class ModelAdapter:
     def tool_result_message(self, results: List[Dict[str, str]]) -> Dict[str, Any]:
         raise NotImplementedError
 
+    def extract_thinking(self, response: Any) -> str:
+        """Model reasoning, separated from reply content. Empty for
+        providers that don't expose it. Never fed back into history."""
+        return ""
+
 
 class AnthropicAdapter(ModelAdapter):
     provider = "anthropic"
@@ -182,8 +187,115 @@ class OpenAICompatibleAdapter(ModelAdapter):
         return {"role": "tool", "tool_call_id": results[0]["id"], "content": results[0]["content"][:20000]}
 
 
+class OllamaAdapter(ModelAdapter):
+    """Native Ollama client — the primary brain for a local build.
+
+    Talks to /api/chat directly (not the OpenAI-compat shim) so that:
+    - thinking arrives in message.thinking, separated from reply content
+    - tool calling uses Ollama's structured format, no text parsing
+    - keep_alive holds the model in memory across heartbeat idles
+    """
+
+    provider = "ollama"
+
+    def __init__(
+        self,
+        base_url: str = "",
+        timeout: float = 0.0,
+        keep_alive: str = "",
+        think: Optional[bool] = None,
+    ) -> None:
+        import os
+
+        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+        self.timeout = timeout or float(os.getenv("OLLAMA_TIMEOUT", "300"))
+        self.keep_alive = keep_alive or os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+        if think is None:
+            think = os.getenv("OLLAMA_THINK", "true").strip().lower() != "false"
+        self.think = think
+        # num_predict caps thinking + reply combined. Without headroom the
+        # model can spend the whole budget thinking and reply with nothing —
+        # v1's empty-reply failure in new clothing. Thinking gets its own
+        # allowance so the caller's max_tokens stays a reply budget.
+        self.think_budget = int(os.getenv("OLLAMA_THINK_BUDGET", "2500"))
+
+    async def complete(
+        self,
+        *,
+        model: str,
+        system: Any,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        max_tokens: int,
+    ) -> Any:
+        import aiohttp
+
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "system", "content": _system_to_text(system)}] + messages,
+            "stream": False,
+            "think": self.think,
+            "keep_alive": self.keep_alive,
+            "options": {"num_predict": max_tokens + (self.think_budget if self.think else 0)},
+        }
+        if tools:
+            payload["tools"] = _openai_tools(tools)
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(f"{self.base_url}/api/chat", json=payload) as resp:
+                body = await resp.json()
+        if resp.status != 200 or "error" in body:
+            raise RuntimeError(f"ollama /api/chat failed ({resp.status}): {body.get('error', body)}")
+        return body
+
+    def _message(self, response: Any) -> Dict[str, Any]:
+        return response.get("message", {}) if isinstance(response, dict) else {}
+
+    def extract_text(self, response: Any) -> str:
+        return (self._message(response).get("content") or "").strip()
+
+    def extract_thinking(self, response: Any) -> str:
+        return (self._message(response).get("thinking") or "").strip()
+
+    def extract_tool_calls(self, response: Any) -> List[ToolCall]:
+        calls: List[ToolCall] = []
+        for index, call in enumerate(self._message(response).get("tool_calls") or []):
+            function = call.get("function", {}) if isinstance(call, dict) else {}
+            arguments = function.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+            name = str(function.get("name", ""))
+            # Ollama tool calls carry no id — synthesise one that keeps the
+            # tool name recoverable for the result message.
+            calls.append(ToolCall(id=f"{name}#{index}", name=name, input=arguments or {}))
+        return calls
+
+    def assistant_message(self, response: Any) -> Dict[str, Any]:
+        message = self._message(response)
+        out: Dict[str, Any] = {
+            "role": "assistant",
+            # thinking is deliberately dropped: it never re-enters history
+            "content": message.get("content") or "",
+        }
+        if message.get("tool_calls"):
+            out["tool_calls"] = message["tool_calls"]
+        return out
+
+    def tool_result_message(self, results: List[Dict[str, str]]) -> Dict[str, Any]:
+        # One tool message per call, like the OpenAI-compatible path.
+        result = results[0]
+        tool_name = result["id"].rsplit("#", 1)[0]
+        return {"role": "tool", "tool_name": tool_name, "content": result["content"][:20000]}
+
+
 def create_model_adapter(provider: str, api_key: str, base_url: str = "") -> ModelAdapter:
     provider_key = (provider or "anthropic").strip().lower()
+    if provider_key == "ollama":
+        # Local — no API key, nothing leaves the machine.
+        return OllamaAdapter(base_url=base_url)
     if provider_key in {"anthropic", "claude"}:
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY is required for MODEL_PROVIDER=anthropic.")
@@ -197,6 +309,8 @@ def create_model_adapter(provider: str, api_key: str, base_url: str = "") -> Mod
 
 def provider_api_key(provider: str, env: Dict[str, str]) -> str:
     provider_key = (provider or "").strip().lower()
+    if provider_key == "ollama":
+        return ""  # local, keyless
     key_names = {
         "anthropic": "ANTHROPIC_API_KEY",
         "claude": "ANTHROPIC_API_KEY",

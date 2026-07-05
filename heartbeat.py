@@ -20,7 +20,7 @@ class Heartbeat:
 
     _INTERVALS = {
         "ACTION": 600,   # 10 min — tend + create in one pass
-        "IDLE":   2700,  # 45 min — genuine quiet (total cycle 55 min, within 1h cache)
+        "IDLE":   1200,  # 20 min — local model, no API cache economics to respect
     }
 
     def __init__(self, interval: float = HEARTBEAT_INTERVAL) -> None:

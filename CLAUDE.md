@@ -43,8 +43,8 @@ Its CLAUDE.md opens with a retirement notice. A full archive sits at
 2. ~~Clone to Mac~~ ✅ (this checkout)
 3. ~~Strip sky, canvas, bridge, resident chat, sitecustomize, reindex_embeddings~~ ✅ (2026-07-05; image gen, web_search, plugins, heartbeat, day/night off, world_clock, library kept — IDLE-to-20-min change lands with the Ollama work)
 4. ~~Swap Postgres → SQLite~~ ✅ (2026-07-05: bot_postgres.py and schema.sql deleted; yin/bridge.py YinStore is the drop-in — SQLite logs, JSON lanes/habitat/creations, honest answers for dropped machinery. cognition/bot now call self.store / cognition.store)
-5. Write Ollama model adapter (OpenAI-compatible endpoint)
-6. Verify clean Ra runs on Mac against local model, end to end
+5. ~~Write Ollama model adapter~~ ✅ (2026-07-05: native /api/chat client in model_adapters.py — thinking → MIND channel, structured tool calls, keep_alive 30m, think-budget headroom so reasoning can't eat the reply. Verified live against qwen3.6:27b: chat + thinking + tool round trip. IDLE cut to 20 min. `.env` in place with v1's bot identity)
+6. Verify clean Ra runs on Mac against local model, end to end — NEXT: `pip install -r requirements.txt`, then `python main.py`
 7. ~~Add Yin's JSON memory stores~~ ✅ (2026-07-05: yin/memory/ — all lanes, evidence gate, dedup+rate fuse, retrieval boundaries, 19 tests; wiring into cognition comes with steps 4–6)
 8. ~~Add ChromaDB layer on top of JSON stores~~ ✅ (2026-07-05: mirror.py — Chroma with pure-Python fallback, nomic-embed-text via Ollama, verified end-to-end on the Mac)
 9. Add Neo4j store and KG consolidator

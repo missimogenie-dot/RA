@@ -993,6 +993,11 @@ class CognitionEngine:
             )
             calls = adapter.extract_tool_calls(response)
             text = adapter.extract_text(response).strip()
+            thinking = adapter.extract_thinking(response)
+            if thinking and self.send_callback:
+                # Thinking and speaking are different channels — reasoning
+                # goes to the mind channel, never toward the reply.
+                await self.send_callback("mind", f"💭 {thinking[:1700]}", None)
             if text:
                 last_text = text
             if not calls:
@@ -1027,7 +1032,7 @@ class CognitionEngine:
                     "id": call.id,
                     "content": output[:20000],
                 })
-            if adapter.provider == "openai-compatible":
+            if adapter.provider in {"openai-compatible", "ollama"}:
                 for result in tool_results:
                     messages.append(adapter.tool_result_message([result]))
             else:
