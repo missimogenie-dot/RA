@@ -377,13 +377,13 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
         ["emoji"],
     ),
     _tool("posture_read",
-        "Read all posture_state rows: name_status, current_posture, last_dream_mode, idle_cycle_count.",
+        "Read all posture_state rows: current_posture, last_dream_mode, idle_cycle_count.",
         {},
         [],
     ),
     _tool("posture_update",
         "Update a posture_state key. "
-        "Keys: name_status, current_posture, last_dream_mode, idle_cycle_count, boot_completed_at.",
+        "Keys: current_posture, last_dream_mode, idle_cycle_count, boot_completed_at.",
         {"key": _S, "value": {}},
         ["key", "value"],
     ),
@@ -1069,8 +1069,7 @@ class CognitionEngine:
         if mode == "ambient":
             recent_convs = recent_convs[-2:]
 
-        name_status = str(posture.get("name_status", "unsettled"))
-        identity_block = build_bot_identity_block(self.instance_name, name_status)
+        identity_block = build_bot_identity_block(self.instance_name)
         dynamic_block = build_bot_dynamic_block(
             posture_state=posture,
             identity_threads=identity_threads,

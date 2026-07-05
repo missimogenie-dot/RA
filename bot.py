@@ -77,7 +77,7 @@ def _safe_int(value: str, default: int) -> int:
 def _looks_like_diagnostic_response(text: str) -> bool:
     first_line = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
     return (
-        first_line.startswith("**RA status**")
+        first_line.startswith("**Yin status**")
         or first_line.startswith("**Recent routing traces**")
         or first_line.startswith("**Trace ")
         or first_line.startswith("**Memory commands**")
@@ -844,13 +844,13 @@ class BotClient(discord.Client):
 
     def _status_report(self, label: str) -> str:
         return "\n".join([
-            f"**RA status** `{label}`",
+            f"**Yin status** `{label}`",
             f"Bot: `{self.user}`",
             f"Auto-response: `{'on' if AUTO_RESPONSE_ENABLED else 'off'}`",
             f"DM chat: `{'on' if DM_CHAT_ENABLED else 'off'}`",
             f"Ambient: `{'on' if self._ambient_enabled else 'off'}`",
             f"Day/night: `{'on' if DAY_NIGHT_ENABLED else 'off'}`",
-            f"Postgres: `{'connected' if self.cognition.store.available else 'unavailable (JSONL fallback)'}`",
+            "Memory: `local (SQLite + JSON lanes)`",
             f"Last activity: `{self._last_activity}`",
             f"Human turns: `{self._human_turn_count}`",
             self.world_clock.render(),

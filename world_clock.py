@@ -111,13 +111,11 @@ class WorldClock:
     def _action_label(self, text: str, tools: set[str]) -> str:
         if not tools and (text or "").lower().strip() in {"sleep", "sleep.", "quiet", "quiet for now"}:
             return "sleep"
-        if "postgres_store_memory" in tools or "memory_store" in tools:
+        if "memory_interpret" in tools or "working_memory_add" in tools:
             return "consolidation"
-        if "postgres_query" in tools:
-            return "postgres_read"
-        if "kg_recall" in tools:
-            return "neo4j_recall"
-        if "extensions_read" in tools or "extensions_list" in tools:
+        if "kg_search" in tools or "kg_add_fact" in tools:
+            return "graph_tending"
+        if "extension_read" in tools or "extension_list" in tools:
             return "extension_read"
         if "web_search" in tools:
             return "research"
