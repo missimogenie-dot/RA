@@ -11,7 +11,7 @@ __pycache__/
 pytest-cache-files-*/
 
 runtime_state/
-canvas_state/
+yin/memory/data/
 threshold_atlas/state.json
 library/reading_progress.json
 *.log

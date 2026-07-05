@@ -42,11 +42,11 @@ Its CLAUDE.md opens with a retirement notice. A full archive sits at
 1. ~~Get Ra onto GitHub (clean, no secrets)~~ ✅
 2. ~~Clone to Mac~~ ✅ (this checkout)
 3. ~~Strip sky, canvas, bridge, resident chat, sitecustomize, reindex_embeddings~~ ✅ (2026-07-05; image gen, web_search, plugins, heartbeat, day/night off, world_clock, library kept — IDLE-to-20-min change lands with the Ollama work)
-4. Swap Postgres → SQLite for event log and tool call log
+4. Swap Postgres → SQLite for event log and tool call log — ⏳ yin/logs.py built + tested; wiring cognition off bot_postgres.py still to do
 5. Write Ollama model adapter (OpenAI-compatible endpoint)
 6. Verify clean Ra runs on Mac against local model, end to end
-7. Add Yin's JSON memory stores (autobiography, lessons, goals, preferences, timeline, working)
-8. Add ChromaDB layer on top of JSON stores
+7. ~~Add Yin's JSON memory stores~~ ✅ (2026-07-05: yin/memory/ — all lanes, evidence gate, dedup+rate fuse, retrieval boundaries, 19 tests; wiring into cognition comes with steps 4–6)
+8. ~~Add ChromaDB layer on top of JSON stores~~ ✅ (2026-07-05: mirror.py — Chroma with pure-Python fallback, nomic-embed-text via Ollama, verified end-to-end on the Mac)
 9. Add Neo4j store and KG consolidator
 10. Add mentor.py (reflection pass)
 11. Add dream cycle
