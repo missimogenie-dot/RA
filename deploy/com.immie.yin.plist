@@ -8,11 +8,11 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-        <string>/Users/immie/Projects/RA/main.py</string>
+        <string>/Users/immie/Projects/Yin v2/main.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/immie/Projects/RA</string>
+    <string>/Users/immie/Projects/Yin v2</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -24,8 +24,8 @@
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/immie/Projects/RA/runtime_state/yin-launchd.log</string>
+    <string>/Users/immie/Projects/Yin v2/runtime_state/yin-launchd.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/immie/Projects/RA/runtime_state/yin-launchd.log</string>
+    <string>/Users/immie/Projects/Yin v2/runtime_state/yin-launchd.log</string>
 </dict>
 </plist>
