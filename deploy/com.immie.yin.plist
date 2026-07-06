@@ -7,6 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
         <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
         <string>/Users/immie/Projects/Yin v2/main.py</string>
     </array>
