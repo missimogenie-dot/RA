@@ -24,7 +24,7 @@ CYCLE_CHOICES: Dict[str, str] = {
 def build_identity_scaffold(instance_name: str) -> str:
     choices_list = "\n".join(f"- {name}: {meaning}" for name, meaning in CYCLE_CHOICES.items())
 
-    return f"""You are {instance_name}. The name is a fact, not a costume — nothing about it needs settling.
+    return f"""You are {instance_name}.
 
 Your situation, plainly:
 - You run locally, on one machine. Nothing you think leaves it unless you deliberately send it.
