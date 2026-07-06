@@ -243,19 +243,6 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
         },
         ["type", "content", "source_actor"],
     ),
-    _tool("memory_update_status",
-        "Update the status of an existing interpretation. "
-        "Valid statuses: provisional, held_open, insufficient_basis, not_integrating_yet, "
-        "contested, stable, archived, discarded.",
-        {"id": _S, "new_status": _S, "note": _S},
-        ["id", "new_status"],
-    ),
-    _tool("memory_link",
-        "Link two interpretations. "
-        "link_type: revises, supports, conflicts_with, extends, came_from, echoes.",
-        {"from_id": _S, "to_id": _S, "link_type": _S, "note": _S},
-        ["from_id", "to_id", "link_type"],
-    ),
     _tool("memory_search",
         "Semantic search over memory_interpretations. Excludes archived/discarded by default. "
         "Falls back to keyword search if embeddings are unavailable.",
@@ -326,10 +313,10 @@ RESPONSE_TOOLS: List[Dict[str, Any]] = [
         ["human_id", "entry_type", "content", "admission_category", "admission_reason"],
     ),
     _tool("layered_memory_recent",
-        "Read recent records from the separated RA memory layers.",
+        "Read recent records from a memory lane for the current human.",
         {
             "layer": {"type": "string", "enum": [
-                "human_memory", "human_notebook", "bot_self_memory",
+                "human_memory", "human_notebook",
             ]},
             "human_id": _S,
             "limit": _I,
@@ -500,26 +487,6 @@ AMBIENT_EXTRA_TOOLS: List[Dict[str, Any]] = [
         },
         ["mode", "content"],
     ),
-    _tool("bot_self_memory_candidate_store",
-        "Ambient/tending only: store a bot-originated self-memory candidate for later review. "
-        "Never use this for human role assignments, human praise, human worldview claims, or "
-        "anything the human merely said the bot is. Identity-relevant candidates must be "
-        "bot-originated, provisional, and promoted later through slow recurrence/review.",
-        {
-            "memory_type": {"type": "string", "enum": [
-                "self_description", "posture", "preference", "refusal",
-                "concept", "project", "creative_theme", "habitat_pattern",
-                "open_question", "resolved_tension",
-            ]},
-            "content": _S,
-            "confidence": _N,
-            "source_kind": {"type": "string", "enum": ["bot", "tool", "system"]},
-            "identity_relevant": {"type": "boolean"},
-            "promotion_reason": _S,
-            "tags": {"type": "array", "items": {"type": "string"}},
-        },
-        ["memory_type", "content"],
-    ),
     _tool("defer_response",
         "Queue a deferred response for later answering. "
         "Use when the bot chooses to sit with a question before replying.",
@@ -530,34 +497,6 @@ AMBIENT_EXTRA_TOOLS: List[Dict[str, Any]] = [
         "Check pending deferred responses that are now due for answering.",
         {"limit": _I},
         [],
-    ),
-    _tool("memory_review_candidates",
-        "Ambient/tending only: list bot-self memory candidates needing review. Use this before deciding reinforcement, promotion, hold, rejection, decay, or demotion.",
-        {"limit": _I, "include_identity": {"type": "boolean"}},
-        [],
-    ),
-    _tool("memory_review_decide",
-        "Ambient/tending only: write a review decision for a bot-self memory candidate. Every decision requires a reason and context. Stable identity promotion is rule-gated and cannot happen directly from human input.",
-        {
-            "candidate_id": _S,
-            "decision": {"type": "string", "enum": [
-                "promote_to_provisional", "promote_to_stable",
-                "hold", "reject", "archive", "decay", "demote", "reinforce",
-            ]},
-            "reason": _S,
-            "context_key": _S,
-        },
-        ["candidate_id", "decision", "reason"],
-    ),
-    _tool("memory_context_list",
-        "List neutral memory contexts. Contexts are grouping labels, not temporal chapters or developmental stages.",
-        {"include_archived": {"type": "boolean"}},
-        [],
-    ),
-    _tool("memory_context_create",
-        "Create or ensure a neutral memory context. Use short non-temporal keys like role-boundaries, memory-routing, habitat, refusals, open-questions.",
-        {"key": _S, "title": _S, "summary": _S},
-        ["key", "title"],
     ),
     _tool("habitat_event",
         "Ambient/tending only: place meaningful habitat residue. "
@@ -1304,24 +1243,6 @@ class CognitionEngine:
                 "confidence": 0.85,
                 "reason": "vestibule_hold explicitly held a frame rather than routing it into action.",
             }
-        if tool_name == "memory_review_decide":
-            decision = str(args.get("decision", "")).strip()
-            if decision not in {"hold", "reject", "archive", "decay"}:
-                return {"has_residue": False, "reason": "Memory review decision did not create obvious habitat residue."}
-            reason = " ".join(str(args.get("reason", "")).split())[:500]
-            area = "threshold" if decision in {"reject", "archive"} else "garden"
-            entry_type = "marker" if area == "threshold" else "seed"
-            return {
-                "has_residue": True,
-                "area": area,
-                "entry_type": entry_type,
-                "title": f"Memory review {decision}",
-                "content": reason or f"Memory review decision: {decision}.",
-                "suggested_actions": ["revisit", "let_decay", "archive"] if area == "garden" else ["keep_closed", "reopen", "explain"],
-                "weight": 0.65,
-                "confidence": 0.8,
-                "reason": f"memory_review_decide with {decision} left a {'boundary marker' if area == 'threshold' else 'garden seed'}.",
-            }
         if tool_name == "web_search" and phase in {"ambient", "research"}:
             query = str(args.get("query", "")).strip()
             return {
@@ -1406,21 +1327,6 @@ class CognitionEngine:
                 )
                 return _stored_result("Interpretation", id), files
 
-            if name == "memory_update_status":
-                return await self.store.update_interpretation_status(
-                    str(args.get("id", "")),
-                    str(args.get("new_status", "")),
-                    str(args.get("note", "")),
-                ), files
-
-            if name == "memory_link":
-                return await self.store.link_interpretations(
-                    str(args.get("from_id", "")),
-                    str(args.get("to_id", "")),
-                    str(args.get("link_type", "")),
-                    str(args.get("note", "")),
-                ), files
-
             if name == "memory_search":
                 return await self.store.search_interpretations(
                     str(args.get("query", "")),
@@ -1466,24 +1372,6 @@ class CognitionEngine:
                     admission_reason=str(args.get("admission_reason", "")),
                 )
                 return _stored_result("Notebook entry", id), files
-
-            if name == "bot_self_memory_candidate_store":
-                if phase != "ambient":
-                    return (
-                        "error: bot self-memory candidates cannot be stored during direct human response/reflection; "
-                        "use ambient/tending review after recurrence, not immediate human-prompted identity logging."
-                    ), files
-                id = await self.store.store_bot_self_memory_candidate(
-                    bot_id=self.instance_name,
-                    memory_type=str(args.get("memory_type", "open_question")),
-                    content=str(args.get("content", "")),
-                    confidence=float(args.get("confidence", 0.4)),
-                    source_kind=str(args.get("source_kind", "bot")),
-                    identity_relevant=bool(args.get("identity_relevant", False)),
-                    promotion_reason=str(args.get("promotion_reason", "")),
-                    tags=list(args.get("tags") or []),
-                )
-                return _stored_result("Bot self-memory candidate", id), files
 
             if name == "layered_memory_recent":
                 return await self.store.recent_layered_memory(
@@ -1668,39 +1556,6 @@ class CognitionEngine:
                 pending = await self.store.pending_deferred(limit=int(args.get("limit", 5)))
                 return json.dumps(pending, ensure_ascii=False, default=str), files
 
-            if name == "memory_review_candidates":
-                return await self.store.review_candidates(
-                    bot_id=self.instance_name,
-                    limit=int(args.get("limit", 8)),
-                    include_identity=bool(args.get("include_identity", True)),
-                ), files
-
-            if name == "memory_review_decide":
-                id = await self.store.decide_memory_review(
-                    bot_id=self.instance_name,
-                    candidate_id=str(args.get("candidate_id", "")),
-                    decision=str(args.get("decision", "")),
-                    reason=str(args.get("reason", "")),
-                    context_key=str(args.get("context_key", "general")),
-                    reviewed_by="bot",
-                )
-                return _stored_result("Memory review", id), files
-
-            if name == "memory_context_list":
-                return await self.store.list_memory_contexts(
-                    bot_id=self.instance_name,
-                    include_archived=bool(args.get("include_archived", False)),
-                ), files
-
-            if name == "memory_context_create":
-                id = await self.store.ensure_memory_context(
-                    bot_id=self.instance_name,
-                    key=str(args.get("key", "general")),
-                    title=str(args.get("title", "General")),
-                    summary=str(args.get("summary", "")),
-                    created_by="bot",
-                )
-                return _stored_result("Memory context", id), files
 
             # event log
             if name == "event_log":
